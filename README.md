@@ -219,6 +219,7 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 
 ## Authors
 
+André Luiz Buarque Vieira-e-Silva (albvs@cin.ufpe.br)
 Voxar Labs (voxarlabs@cin.ufpe.br) - https://www.cin.ufpe.br/~voxarlabs/
 
   
