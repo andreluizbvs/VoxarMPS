@@ -10,7 +10,7 @@
 
 ![GUI & simulation output](https://lh3.googleusercontent.com/ZE8kEKhkJEvU-egRPZKXBxoNHCx9CC4ieHEqydhvALc8kjIEf6BgpgK-fmH6dwEn4a306E42hw4Rtg)
 
-![enter image description here](https://lh3.googleusercontent.com/0nM5gYtc49N9YH5Pv8XmEJt5doqyNWaqPsv3EDxKaIYaMLQ4aKadmHXI3tNCPGOZAisUT_2Tw0vv8Q "Oil spilling")
+![Oil spilling](https://lh3.googleusercontent.com/0nM5gYtc49N9YH5Pv8XmEJt5doqyNWaqPsv3EDxKaIYaMLQ4aKadmHXI3tNCPGOZAisUT_2Tw0vv8Q "Oil spilling")
 
   
 
@@ -195,7 +195,7 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
   
 
-This program is distributed under GNU General Public License version 3 (GPLv3) license. Please see LICENSE file.
+This program is distributed under GNU General Public License version 3 (GPLv3) license. Please see [LICENSE](https://github.com/andreluizbvs/VoxarMPS/blob/master/LICENSE) file.
 
   
 
