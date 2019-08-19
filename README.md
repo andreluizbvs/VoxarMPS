@@ -62,13 +62,13 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
   
 
-- CUDA-capable GPU
+- NVIDIA GPU
 
 - Compute capability equal or greater than 6.1 (https://en.wikipedia.org/wiki/CUDA)
 
-- CUDA 10.1
+- CUDA 10.1 
 
-- Visual Studio 2019
+- Visual Studio 2019 
 
 ## Installation
 
@@ -76,13 +76,13 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 1. Update the NVIDIA GPU driver to the current version
 
-2. Install CUDA 10.1
+2. Install CUDA 10.1 (https://developer.nvidia.com/cuda-downloads)
 
-3. Install Visual Studio 2019 (Community, Professional or Enterprise)
+3. Install Visual Studio 2019 (Community, Professional or Enterprise) (https://visualstudio.microsoft.com/vs/)
 
 4. Install Git and clone this repository
 
-5. Build from source both projects, first the the VoxarMPS solution and then the GUI solution
+5. Build from source both Visual Studio projects, first the the VoxarMPS solution and then the GUI solution
 
 6. Run GUI.exe to set the simulation parameters and start it
 
@@ -98,41 +98,27 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 - (1) Choose two or three dimensions simulations;
 
-- (2) Type of execution: sequentially, parallelized through OpenMP or
-
-parallelized through CUDA;
+- (2) Type of execution: sequentially, parallelized through OpenMP or parallelized through CUDA;
 
 - (3) Select from a set of previously built simulation scenarios;
 
 - (4) Choose from two possible fluid compressibility approaches;
 
-- By selecting Fully Incompressible, (5) and (6) will be enabled, which
-
-numerically improve calculations and stabilize fluid pressure;
+- By selecting Fully Incompressible, (5) and (6) will be enabled, which numerically improve calculations and stabilize fluid pressure;
 
 - (7) Check to employ the SPS-LES turbulence model;
 
-- (8) Can only the enabled if the chosen test scenario is a multiphase
+- (8) Can only be enabled if the chosen test scenario is a multiphase system. If checked, the second fluid in the simulation will present viscoplastic properties;
 
-system. If checked, the second fluid in the simulation will present
-
-viscoplastic properties;
-
-- In (9), (10), (11) and (12) the density and viscosity values of the
-
-two fluids in the simulation can be set;
+- In (9), (10), (11) and (12) the density and viscosity values of the two fluids in the simulation can be set;
 
 - (13) Sets the time-step duration;
 
 - (14) Sets how long the simulation will last in real-world time;
 
-- (15) Generates the output VTU files with all kinds of particles
+- (15) Generates the output VTU files with all kinds of particles present in the simulation;
 
-present in the simulation;
-
-- (16) Generates the output VTU files with only fluid particles
-
-information;
+- (16) Generates the output VTU files with only fluid particles information;
 
 - (17) starts the generating the simulation;
 
@@ -149,13 +135,9 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
 1. Number of particles in the simulation is limited by the size of available RAM
 
-2. Only tested on Windows 10 using Visual Studio 2019 Enterprise and
+2. Only tested on Windows 10 using Visual Studio 2019 Enterprise and Community editions.
 
-Community editions.
-
-3. Only the following NVIDIA GPUs were used: GTX 1080 (Mobile) and GTX
-
-1080 Ti
+3. Only the following NVIDIA GPUs were used: GTX 1080 (Mobile) and GTX 1080 Ti
 
   
 
@@ -213,7 +195,7 @@ Community editions.
 
   
 
-This program is distributed under GNU General Public License version 3 (GPLv3) license.
+This program is distributed under GNU General Public License version 3 (GPLv3) license. Please see LICENSE file.
 
   
 
@@ -228,26 +210,10 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 
 Main references
 
-- Vieira-e-Silva, et al. "A fluid simulation system " _Computer Physics
+- Vieira-e-Silva, et al. "A fluid simulation system " _Computer Physics Communications_ (2019), Submitted.
 
-Communications_ (2019), Submitted.
+- Shakibaeinia, Ahmad, and Yee-Chung Jin. "MPS mesh-free particle method for multiphase flows." _Computer Methods in Applied Mechanics and Engineering_ 229 (2012): 13-26.
 
-- Shakibaeinia, Ahmad, and Yee-Chung Jin. "MPS mesh-free particle
+- Gotoh, H. "Advanced particle methods for accurate and stable computation of fluid flows." _Frontiers of Discontinuous Numerical Methods and Practical Simulations in Engineering and Disaster Prevention_ (2013): 113.
 
-method for multiphase flows." _Computer Methods in Applied Mechanics
-
-and Engineering_ 229 (2012): 13-26.
-
-- Gotoh, H. "Advanced particle methods for accurate and stable
-
-computation of fluid flows." _Frontiers of Discontinuous Numerical
-
-Methods and Practical Simulations in Engineering and Disaster
-
-Prevention_ (2013): 113.
-
-- Koshizuka, Seiichi, and Yoshiaki Oka. "Moving-particle semi-implicit
-
-method for fragmentation of incompressible fluid." _Nuclear science
-
-and engineering_ 123.3 (1996): 421-434.
+- Koshizuka, Seiichi, and Yoshiaki Oka. "Moving-particle semi-implicit method for fragmentation of incompressible fluid." _Nuclear science and engineering_ 123.3 (1996): 421-434.
