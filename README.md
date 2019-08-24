@@ -210,7 +210,7 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 
 Main references
 
-- Vieira-e-Silva, et al. "A fluid simulation system " _Computer Physics Communications_ (2019), Submitted.
+- Vieira-e-Silva, André-Luiz et al. "A fluid simulation system based on the MPS method." _Computer Physics Communications_ (2019), Submitted.
 
 - Shakibaeinia, Ahmad, and Yee-Chung Jin. "MPS mesh-free particle method for multiphase flows." _Computer Methods in Applied Mechanics and Engineering_ 229 (2012): 13-26.
 
