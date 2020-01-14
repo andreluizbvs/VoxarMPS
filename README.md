@@ -76,7 +76,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 1. Update the NVIDIA GPU driver to the current version
 
-2. Install CUDA 10.1 (https://developer.nvidia.com/cuda-downloads)
+2. Install CUDA 10.1 (https://developer.nvidia.com/cuda-10.1-download-archive-base)
 
 3. Install Visual Studio 2019 (Community, Professional or Enterprise) (https://visualstudio.microsoft.com/vs/)
 
@@ -137,7 +137,7 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
 2. Only tested on Windows 10 using Visual Studio 2019 Enterprise and Community editions.
 
-3. Only the following NVIDIA GPUs were used: GTX 1080 (Mobile) and GTX 1080 Ti
+3. Only the following NVIDIA GPUs were tested with: GTX 1080 (Mobile) and GTX 1080 Ti
 
   
 
