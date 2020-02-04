@@ -36,6 +36,7 @@ double W(double R, int KTYPE, int dim, double re)
 {
 	double w;
 	double q = R / re;
+
 	switch (KTYPE) {
 		case 1: 											//		   Second order polynomial function (Koshizuka and Oka, 1996)
 			if (q < 0.5) w = 2.0 - 4.0 * pow(q, 2);

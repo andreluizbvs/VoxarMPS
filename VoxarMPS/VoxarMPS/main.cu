@@ -82,7 +82,7 @@ int main(int argc,													//		   Number of strings in array argv
 	bool threedim;
 	bool outAll;
 	bool outFluid;
-	double stepsToCalcNeigh = 1.0;									//		   How many steps until the next neighborhood update
+	double stepsToCalcNeigh = 2.0;									//		   How many steps until the next neighborhood update
 
 	if (string(argv[1]) == "oil")
 	{
@@ -983,61 +983,58 @@ int main(int argc,													//		   Number of strings in array argv
 
 	if (codeOpt != "gpu")
 	{
-		//NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
-		neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
+		NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
 	}
 	else
 	{
-		neighbour_cuda_2d_gpu(TP, d_x, d_y, DELTA, re, d_neighb, Xmin, Xmax, Ymin, Ymax);
+		Ista = new int[tnc + 1];
+		Iend = new int[tnc + 1];
+		ip = new int[TP + 1];
 
-		//Ista = new int[tnc + 1];
-		//Iend = new int[tnc + 1];
-		//ip = new int[TP + 1];
+		for (int i = 1; i <= tnc; i++)
+		{
+			Ista[i] = 1;
+			Iend[i] = 0;
+		}
 
-		//for (int i = 1; i <= tnc; i++)
-		//{
-		//	Ista[i] = 1;
-		//	Iend[i] = 0;
-		//}
+		for (int k = 1; k <= TP; k++)
+		{
+			icell = int((x[k] - Xmin) / re) + 1;
+			jcell = int((y[k] - Ymin) / re) + 1;
+			if (threedim)
+			{
+				kcell = int((z[k] - Zmin) / (re + DELTA)) + 1;
+				Cnum = icell + (jcell - 1) * ncx + (kcell - 1) * ncx * ncy;
+			}
+			else
+			{
+				Cnum = icell + (jcell - 1) * ncx;					//		   Cell number in which particle k is located  
+			}
+			Iend[Cnum]++;											//		   Number of particle in cell Cnum
 
-		//for (int k = 1; k <= TP; k++)
-		//{
-		//	icell = int((x[k] - Xmin) / re) + 1;
-		//	jcell = int((y[k] - Ymin) / re) + 1;
-		//	if (threedim)
-		//	{
-		//		kcell = int((z[k] - Zmin) / (re + DELTA)) + 1;
-		//		Cnum = icell + (jcell - 1) * ncx + (kcell - 1) * ncx * ncy;
-		//	}
-		//	else
-		//	{
-		//		Cnum = icell + (jcell - 1) * ncx;					//		   Cell number in which particle k is located  
-		//	}
-		//	Iend[Cnum]++;											//		   Number of particle in cell Cnum
+			for (int m = Iend[tnc]; m >= Iend[Cnum]; m--)
+			{
+				if (m > 0)
+				{
+					ip[m + 1] = ip[m];
+				}
+			}
 
-		//	for (int m = Iend[tnc]; m >= Iend[Cnum]; m--)
-		//	{
-		//		if (m > 0)
-		//		{
-		//			ip[m + 1] = ip[m];
-		//		}
-		//	}
+			for (int m = Cnum + 1; m <= tnc; m++)
+			{
+				Ista[m]++;
+				Iend[m]++;
+			}
 
-		//	for (int m = Cnum + 1; m <= tnc; m++)
-		//	{
-		//		Ista[m]++;
-		//		Iend[m]++;
-		//	}
+			ip[Iend[Cnum]] = k;
+		}
 
-		//	ip[Iend[Cnum]] = k;
-		//}
+		cudaMemcpy(d_ip, ip, (TP + 1) * sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_Ista, Ista, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_Iend, Iend, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
 
-		//cudaMemcpy(d_ip, ip, (TP + 1) * sizeof(int), cudaMemcpyHostToDevice);
-		//cudaMemcpy(d_Ista, Ista, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-		//cudaMemcpy(d_Iend, Iend, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-
-		//if (division > 0) neighbor3 << <division, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
-		//if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
+		if (division > 0) neighbor3 << <division, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
+		if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
 	}
 	
 
@@ -1094,14 +1091,11 @@ int main(int argc,													//		   Number of strings in array argv
 		{
 			if (codeOpt != "gpu")
 			{
-				//NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
-				neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
-
+				NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
 			}
 			else
 			{
-				neighbour_cuda_2d_gpu(TP, d_x, d_y, DELTA, re, d_neighb, Xmin, Xmax, Ymin, Ymax);
-				/*if (divisionNeigh1 > 0) neighbor1 << <divisionNeigh1, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, re, DELTA, TP, d_x, d_y, d_neighb, d_Ista, d_Iend, d_nc, d_ip);
+				if (divisionNeigh1 > 0) neighbor1 << <divisionNeigh1, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, re, DELTA, TP, d_x, d_y, d_neighb, d_Ista, d_Iend, d_nc, d_ip);
 				if (modNeigh1 > 0) neighbor1 << <1, modNeigh1 >> > ((divisionNeigh1 * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, re, DELTA, TP, d_x, d_y, d_neighb, d_Ista, d_Iend, d_nc, d_ip);
 				cudaDeviceSynchronize();
 
@@ -1115,7 +1109,7 @@ int main(int argc,													//		   Number of strings in array argv
 				cudaMemcpy(d_Iend, Iend, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
 
 				if (division > 0) neighbor3 << <division, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
-				if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);*/
+				if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
 			}
 		}
 

@@ -38,7 +38,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "cublas.h"
 #include "cublas_v2.h"
 #include "cusolverSp.h"
-#include "neighbour_parallel.h"
 
 #include <omp.h>
 
