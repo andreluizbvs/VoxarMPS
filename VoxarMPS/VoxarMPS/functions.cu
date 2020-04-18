@@ -749,7 +749,7 @@ __global__ void cgm2(int offset, double* r, double* b, double* s)
 	r[i] = b[i] - s[i];
 }
 
-__global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh)
+__global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh, int TP)
 {
 	unsigned int i = offset + (blockDim.x * blockIdx.x + threadIdx.x);
 
@@ -764,9 +764,24 @@ __global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon,
 		}
 		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
 	}
+
+	//for (int i = 1; i <= TP; i++)
+	//{
+	//	if (bcon[i] == 0)
+	//	{
+	//		for (int l = 2; l <= neigh[i * NEIGHBORS + 1]; l++)
+	//		{
+	//			int j = neigh[i * NEIGHBORS + l];
+	//			if (j > i) continue;
+	//			if (bcon[j] != 0) continue;
+	//			aux[i] = aux[i] - ic[i * NEIGHBORS + l] * q[j];
+	//		}
+	//		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
+	//	}
+	//}
 }
 
-__global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh)
+__global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh, int TP)
 {
 	unsigned int i = offset + (blockDim.x * blockIdx.x + threadIdx.x);
 
@@ -781,6 +796,21 @@ __global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon,
 		}
 		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
 	}
+
+	//for (int i = TP; i >= 1; i--)
+	//{
+	//	if (bcon[i] == 0)
+	//	{
+	//		for (int l = 2; l <= neigh[i * NEIGHBORS + 1]; l++)
+	//		{
+	//			int j = neigh[i * NEIGHBORS + l];
+	//			if (j < i)continue;
+	//			if (bcon[j] != 0)continue;
+	//			aux[i] = aux[i] - ic[i * NEIGHBORS + l] * q[j];
+	//		}
+	//		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
+	//	}
+	//}
 }
 
 __global__ void cgm5(int offset, double* r, double* q, int* bcon, float* rqo)
@@ -861,8 +891,8 @@ __global__ void cgm12(int offset, double* r, int* bcon, double* err1, int* j, do
 	double err1_d;
 	if (bcon[i] == 0)
 	{
-		if (r[i] > 0)err1_d = r[i] * dt * dt;
-		else err1_d = -r[i] * dt * dt;
+		if (r[i] > 0) { err1_d = r[i] * dt * dt; }
+		else { err1_d = -r[i] * dt * dt; }
 		if (err1_d > eps)
 		{
 			atomicAdd(&j[0], 1);
@@ -1100,11 +1130,12 @@ __global__ void sourceCalc(int offset, int TP, int* PTYPE, int* bcon, double* ns
 
 					if (PTYPE[j] <= -1 || i == j) continue;
 					double d;
-					if (dim == 3)
+					if (dim == 3) {
 						d = sqrt(pow((x[j] - x[i]), 2.0) + pow((y[j] - y[i]), 2.0) + pow((z[j] - z[i]), 2.0));
-					else
+					}
+					else {
 						d = sqrt(pow((x[j] - x[i]), 2.0) + pow((y[j] - y[i]), 2.0));
-
+					}
 
 					if (fabs(d) <= 1.0e-15)	continue;
 
@@ -2538,6 +2569,18 @@ void PRESSURECALC(int Method, int GP, int FP, int WP, int TP, int* PTYPE, double
 		//---------------------- Using Conjugate gradient method -------------------
 
 		MATRIX(re, Method, FP, WP, TP, x, y, z, coll, KTYPE, PTYPE, correction, nstar, BETA, n0, pnew, Rho1, relaxp, lambda, DT, p, n, GP, dim, neigh, poiss, bcon, source, unew, vnew, wnew, matopt, srcopt, codeOpt);
+
+		//std::ofstream outneigh;
+		//std::string filename = "outneigh_cpu1.txt";
+		//outneigh.open(filename, 'w');
+		//for (int j = 1; j <= TP; j++) {
+		//	for (int i = 0; i < NEIGHBORS; i++) {
+		//		outneigh << poiss[j][i + 1] << " ";
+		//	}
+		//	outneigh << std::endl;
+		//}
+
+		//outneigh.close();
 
 		INCDECOM(TP, bcon, neigh, poiss, ic, codeOpt);
 

@@ -21,24 +21,26 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <tchar.h>
-#include <string>
 #include <cstdio>
 #include <cmath>
-#include <fstream>
-#include <iostream>
 #include <ctime>
 #include <vector>
 #include <tuple>
 #include <algorithm>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "cusparse.h"
-#include "cusparse_v2.h"
+//#include "cusparse.h"
+//#include "cusparse_v2.h"
 #include "inOut.h"
-#include "cublas.h"
 #include "cublas_v2.h"
 #include "cusolverSp.h"
 #include "neighbour_parallel.h"
+#include "helper_cuda.h"
+#include "helper_cusolver.h"
+
+
+#include <stdlib.h>
+#include <assert.h>
 
 #include <omp.h>
 
@@ -180,9 +182,9 @@ __global__ void cgm1(int offset, int TP, int* bcon, double* s, int* neigh, doubl
 
 __global__ void cgm2(int offset, double* r, double* b, double* s);
 
-__global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh);
+__global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh, int TP);
 
-__global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh);
+__global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh, int TP);
 
 __global__ void cgm5(int offset, double* r, double* q, int* bcon, float* rqo);
 

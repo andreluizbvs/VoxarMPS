@@ -23,7 +23,270 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "functions.cuh"
 #include "inOut.h"
 
+
 using namespace std;
+
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort = true)
+{
+	if (code != cudaSuccess)
+	{
+		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+		if (abort) exit(code);
+	}
+}
+
+static const char* _cusparseGetErrorEnum(cusparseStatus_t error)
+{
+	switch (error)
+	{
+
+	case CUSPARSE_STATUS_SUCCESS:
+		return "CUSPARSE_STATUS_SUCCESS";
+
+	case CUSPARSE_STATUS_NOT_INITIALIZED:
+		return "CUSPARSE_STATUS_NOT_INITIALIZED";
+
+	case CUSPARSE_STATUS_ALLOC_FAILED:
+		return "CUSPARSE_STATUS_ALLOC_FAILED";
+
+	case CUSPARSE_STATUS_INVALID_VALUE:
+		return "CUSPARSE_STATUS_INVALID_VALUE";
+
+	case CUSPARSE_STATUS_ARCH_MISMATCH:
+		return "CUSPARSE_STATUS_ARCH_MISMATCH";
+
+	case CUSPARSE_STATUS_MAPPING_ERROR:
+		return "CUSPARSE_STATUS_MAPPING_ERROR";
+
+	case CUSPARSE_STATUS_EXECUTION_FAILED:
+		return "CUSPARSE_STATUS_EXECUTION_FAILED";
+
+	case CUSPARSE_STATUS_INTERNAL_ERROR:
+		return "CUSPARSE_STATUS_INTERNAL_ERROR";
+
+	case CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED:
+		return "CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED";
+
+	case CUSPARSE_STATUS_ZERO_PIVOT:
+		return "CUSPARSE_STATUS_ZERO_PIVOT";
+	}
+
+	return "<unknown>";
+}
+
+inline void __cusparseSafeCall(cusparseStatus_t err, const char* file, const int line)
+{
+	if (CUSPARSE_STATUS_SUCCESS != err) {
+		fprintf(stderr, "CUSPARSE error in file '%s', line %Ndims\Nobjs %s\nerror %Ndims: %s\nterminating!\Nobjs", __FILE__, __LINE__, err, \
+			_cusparseGetErrorEnum(err)); \
+			cudaDeviceReset(); assert(0); \
+	}
+}
+
+extern "C" void cusparseSafeCall(cusparseStatus_t err) { __cusparseSafeCall(err, __FILE__, __LINE__); }
+
+//profiling the code
+#define TIME_INDIVIDUAL_LIBRARY_CALLS
+
+#define DBICGSTAB_MAX_ULP_ERR   100
+#define DBICGSTAB_EPS           1.E-14f //9e-2
+
+#define CLEANUP()                       \
+do {                                    \
+    if (x)          free (x);           \
+    if (f)          free (f);           \
+    if (r)          free (r);           \
+    if (rw)         free (rw);          \
+    if (p)          free (p);           \
+    if (pw)         free (pw);          \
+    if (s)          free (s);           \
+    if (t)          free (t);           \
+    if (v)          free (v);           \
+    if (tx)         free (tx);          \
+    if (Aval)       free(Aval);         \
+    if (AcolsIndex) free(AcolsIndex);   \
+    if (ArowsIndex) free(ArowsIndex);   \
+    if (Mval)       free(Mval);         \
+    if (devPtrX)    checkCudaErrors(cudaFree (devPtrX));                    \
+    if (devPtrF)    checkCudaErrors(cudaFree (devPtrF));                    \
+    if (devPtrR)    checkCudaErrors(cudaFree (devPtrR));                    \
+    if (devPtrRW)   checkCudaErrors(cudaFree (devPtrRW));                   \
+    if (devPtrP)    checkCudaErrors(cudaFree (devPtrP));                    \
+    if (devPtrS)    checkCudaErrors(cudaFree (devPtrS));                    \
+    if (devPtrT)    checkCudaErrors(cudaFree (devPtrT));                    \
+    if (devPtrV)    checkCudaErrors(cudaFree (devPtrV));                    \
+    if (devPtrAval) checkCudaErrors(cudaFree (devPtrAval));                 \
+    if (devPtrAcolsIndex) checkCudaErrors(cudaFree (devPtrAcolsIndex));     \
+    if (devPtrArowsIndex) checkCudaErrors(cudaFree (devPtrArowsIndex));     \
+    if (devPtrMval)       checkCudaErrors(cudaFree (devPtrMval));           \
+    if (stream)           checkCudaErrors(cudaStreamDestroy(stream));       \
+    if (cublasHandle)     checkCudaErrors(cublasDestroy(cublasHandle));     \
+    if (cusparseHandle)   checkCudaErrors(cusparseDestroy(cusparseHandle)); \
+    fflush (stdout);                                    \
+} while (0)
+
+
+static void gpu_pbicgstab(cublasHandle_t cublasHandle, cusparseHandle_t cusparseHandle, int m, int n, int nnz,
+	const cusparseMatDescr_t descra, /* the coefficient matrix in CSR format */
+	double* a, int* ia, int* ja,
+	const cusparseMatDescr_t descrm, /* the preconditioner in CSR format, lower & upper triangular factor */
+	double* vm, int* im, int* jm,
+	cusparseSolveAnalysisInfo_t info_l, cusparseSolveAnalysisInfo_t info_u, /* the analysis of the lower and upper triangular parts */
+	double* f, double* r, double* rw, double* p, double* pw, double* s, double* t, double* v, double* x,
+	int maxit, double tol, double ttt_sv)
+{
+	double rho, rhop, beta, alpha, negalpha, omega, negomega, temp, temp2;
+	double nrmr, nrmr0;
+	rho = 0.0;
+	double zero = 0.0;
+	double one = 1.0;
+	double mone = -1.0;
+	int i = 0;
+	int j = 0;
+	double ttl, ttl2, ttu, ttu2, ttm, ttm2;
+	double ttt_mv = 0.0;
+
+	//WARNING: Analysis is done outside of the function (and the time taken by it is passed to the function in variable ttt_sv)
+
+	//compute initial residual r0=b-Ax0 (using initial guess in x)
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+	checkCudaErrors(cudaDeviceSynchronize());
+	ttm = second();
+#endif
+
+	checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, x, &zero, r));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+	cudaDeviceSynchronize();
+	ttm2 = second();
+	ttt_mv += (ttm2 - ttm);
+	//printf("matvec %f (s)\n",ttm2-ttm);
+#endif
+	checkCudaErrors(cublasDscal(cublasHandle, n, &mone, r, 1));
+	checkCudaErrors(cublasDaxpy(cublasHandle, n, &one, f, 1, r, 1));
+	//copy residual r into r^{\hat} and p
+	checkCudaErrors(cublasDcopy(cublasHandle, n, r, 1, rw, 1));
+	checkCudaErrors(cublasDcopy(cublasHandle, n, r, 1, p, 1));
+	checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr0));
+	//printf("gpu, init residual:norm %20.16f\n",nrmr0); 
+
+	for (i = 0; i < maxit; ) {
+		rhop = rho;
+		checkCudaErrors(cublasDdot(cublasHandle, n, rw, 1, r, 1, &rho));
+
+		if (i > 0) {
+			beta = (rho / rhop) * (alpha / omega);
+			negomega = -omega;
+			checkCudaErrors(cublasDaxpy(cublasHandle, n, &negomega, v, 1, p, 1));
+			checkCudaErrors(cublasDscal(cublasHandle, n, &beta, p, 1));
+			checkCudaErrors(cublasDaxpy(cublasHandle, n, &one, r, 1, p, 1));
+		}
+		//preconditioning step (lower and upper triangular solve)
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttl = second();
+#endif
+		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
+		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
+		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_l, p, t));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttl2 = second();
+		ttu = second();
+#endif
+		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
+		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
+		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_u, t, pw));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttu2 = second();
+		ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
+		//printf("solve lower %f (s), upper %f (s) \n",ttl2-ttl,ttu2-ttu);
+#endif
+
+		//matrix-vector multiplication
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttm = second();
+#endif
+
+		checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, pw, &zero, v));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttm2 = second();
+		ttt_mv += (ttm2 - ttm);
+		//printf("matvec %f (s)\n",ttm2-ttm);
+#endif
+
+		checkCudaErrors(cublasDdot(cublasHandle, n, rw, 1, v, 1, &temp));
+		alpha = rho / temp;
+		negalpha = -(alpha);
+		checkCudaErrors(cublasDaxpy(cublasHandle, n, &negalpha, v, 1, r, 1));
+		checkCudaErrors(cublasDaxpy(cublasHandle, n, &alpha, pw, 1, x, 1));
+		checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr));
+
+		if (nrmr < tol * nrmr0) {
+			j = 5;
+			break;
+		}
+
+		//preconditioning step (lower and upper triangular solve)
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttl = second();
+#endif
+		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
+		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
+		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_l, r, t));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttl2 = second();
+		ttu = second();
+#endif
+		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
+		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
+		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_u, t, s));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttu2 = second();
+		ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
+		//printf("solve lower %f (s), upper %f (s) \n",ttl2-ttl,ttu2-ttu);
+#endif
+		//matrix-vector multiplication
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttm = second();
+#endif
+
+		checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, s, &zero, t));
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+		checkCudaErrors(cudaDeviceSynchronize());
+		ttm2 = second();
+		ttt_mv += (ttm2 - ttm);
+		//printf("matvec %f (s)\n",ttm2-ttm);
+#endif
+
+		checkCudaErrors(cublasDdot(cublasHandle, n, t, 1, r, 1, &temp));
+		checkCudaErrors(cublasDdot(cublasHandle, n, t, 1, t, 1, &temp2));
+		omega = temp / temp2;
+		negomega = -(omega);
+		checkCudaErrors(cublasDaxpy(cublasHandle, n, &omega, s, 1, x, 1));
+		checkCudaErrors(cublasDaxpy(cublasHandle, n, &negomega, t, 1, r, 1));
+
+		checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr));
+
+		if (nrmr < tol * nrmr0) {
+			i++;
+			j = 0;
+			break;
+		}
+		i++;
+	}
+
+#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
+	printf("gpu total solve time %f (s), matvec time %f (s)\n", ttt_sv, ttt_mv);
+#endif
+}
 
 __global__ void setDensity(int offset, double* d_RHO, const int TP, int* d_PTYPE, double Rho1, double Rho2)
 {
@@ -217,10 +480,10 @@ int main(int argc,													//		   Number of strings in array argv
 	double* zstar, * wstar, * wnew;
 
 
-	int** neighb;
+	int** neighb, *h_neighb;
 	int* bcon;
-	double** poiss;
-	double** ic;
+	double** poiss, *h_poiss;
+	double** ic, *h_ic;
 	double* source;
 	double dirichlet = 0.97;
 	int imin = 10, imax = 50;
@@ -352,7 +615,7 @@ int main(int argc,													//		   Number of strings in array argv
 	//---------------------------Rheological parameters-----------------------------
 
 	int    Fluid2_type;												//		   Newtonian:0  , H-B fluid:1 
-	double N = 0.0;													//		   flow behaviour (power law) index
+	double N_PL = 0.0;													//		   flow behaviour (power law) index
 	double MEU0 = 0;													//		   consistency index
 	double PHI = 0;													//		   friction angle (RAD)
 	double cohes = 0;													//		   cohesiveness coefficient
@@ -361,7 +624,7 @@ int main(int argc,													//		   Number of strings in array argv
 	if (visc)
 	{
 		Fluid2_type = 1;											//		   Newtonian:0  , H-B fluid:1 
-		N = 1.3;													//		   flow behaviour (power law) index
+		N_PL = 1.3;													//		   flow behaviour (power law) index
 		MEU0 = 0.04;												//		   consistency index
 		PHI = 0;													//		   friction angle (RAD)
 		cohes = 0;													//		   cohesiveness coefficient
@@ -548,7 +811,7 @@ int main(int argc,													//		   Number of strings in array argv
 	//--------------------------- Defining Dynamic Matrices ------------------------------	
 	x = new double[TP + 1]();
 	y = new double[TP + 1]();
-	if (threedim) z = new double[TP + 1]();
+	/*if (threedim)*/ z = new double[TP + 1]();
 
 	p = new double[TP + 1]();
 	u = new double[TP + 1]();
@@ -679,7 +942,7 @@ int main(int argc,													//		   Number of strings in array argv
 	TP = FP + GP + WP + SP;
 
 	if (outAll)
-		saveParticles(TP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
+		// saveParticles(TP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
 
 	if (outFluid)
 		saveFluidParticles(TP, FP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
@@ -718,22 +981,42 @@ int main(int argc,													//		   Number of strings in array argv
 	if (threedim) { tnc = ncx * ncy * ncz; }						//		   Total number of cells   
 	else { tnc = ncx * ncy; }
 
+	h_neighb = new int[(NEIGHBORS + 1) * (TP + 1)]();
+	h_poiss = new double[(NEIGHBORS + 1) * (TP + 1)]();
+	h_ic = new double[(NEIGHBORS + 1)*(TP + 1)]();
+	neighb = new int* [TP + 1]();
+	for (int m = 0; m <= TP; m++)
+		neighb[m] = new int[NEIGHBORS + 1]();
+	pnew = new double[TP + 1]();
+	if (Method != 3)
+	{
+		bcon = new int[TP + 1]();
+		source = new double[TP + 1]();
+		poiss = new double* [TP + 1];
+		for (int m = 1; m <= TP; m++)
+			poiss[m] = new double[NEIGHBORS + 1]();
+		ic = new double* [TP + 1];
+		for (int m = 1; m <= TP; m++)
+			ic[m] = new double[NEIGHBORS + 1]();
+	}
+
 	if (codeOpt != "gpu")
 	{
+
 		xstar = new double[TP + 1]();
 		ystar = new double[TP + 1]();
 		if (threedim) zstar = new double[TP + 1]();
 
 		ustar = new double[TP + 1]();
 		vstar = new double[TP + 1]();
-		if (threedim) wstar = new double[TP + 1]();
+		/*if (threedim)*/ wstar = new double[TP + 1]();
 
-		pnew = new double[TP + 1]();
 		phat = new double[TP + 1]();
 		unew = new double[TP + 1]();
 		vnew = new double[TP + 1]();
-		if (threedim) wnew = new double[TP + 1]();
-
+		/*if (threedim)*/ wnew = new double[TP + 1]();
+		n = new double[TP + 1]();
+		nstar = new double[TP + 1]();
 		NEUt = new double[TP + 1]();
 		TURB1 = new double[TP + 1]();
 		TURB2 = new double[TP + 1]();
@@ -744,23 +1027,9 @@ int main(int argc,													//		   Number of strings in array argv
 		RHO = new double[TP + 1]();
 		SFX = new double[TP + 1]();
 		SFY = new double[TP + 1]();
-		n = new double[TP + 1]();
-		nstar = new double[TP + 1]();
-		neighb = new int* [TP + 1]();
-		for (int m = 0; m <= TP; m++)
-			neighb[m] = new int[NEIGHBORS + 1]();
 
-		if (Method != 3)
-		{
-			bcon = new int[TP + 1]();
-			source = new double[TP + 1]();
-			poiss = new double* [TP + 1];
-			for (int m = 1; m <= TP; m++)
-				poiss[m] = new double[NEIGHBORS + 1]();
-			ic = new double* [TP + 1];
-			for (int m = 1; m <= TP; m++)
-				ic[m] = new double[NEIGHBORS + 1]();
-		}
+
+
 
 	}
 
@@ -830,11 +1099,49 @@ int main(int argc,													//		   Number of strings in array argv
 	double* d_s1 = NULL;
 	double* d_aux = NULL;
 	int* d_bcon = NULL;
+	cusparseHandle_t handle;    cusparseSafeCall(cusparseCreate(&handle));
+
+	const int Nrows = TP+1;
+	const int Ncols = NEIGHBORS+1;
+
+	cusparseMatDescr_t descrA;      cusparseSafeCall(cusparseCreateMatDescr(&descrA));
+	cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL);
+	cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO);
+
+	int nnz = 0;                                // --- Number of nonzero elements in dense matrix
+	const int lda = Nrows;                      // --- Leading dimension of dense matrix
+	// --- Device side number of nonzero elements per row
+	int* d_nnzPerVector = NULL;
+	double* d_A = NULL;
+	int* d_A_RowIndices = NULL;
+	int* d_A_ColIndices = NULL;
+	const int max_iter = 1000;
+	int k, M = 0, N = 0, nz = 0, * I_cal = NULL, * J_cal = NULL;
+	int* d_col, * d_row;
+	int qatest = 0;
+	const float tol = 1e-12f;
+	float * rhs;
+	float r0, r1, alpha, beta;
+	float* d_val;
+	float* d_zm1, * d_zm2, * d_rm2;
+	float* d_r, * d_p_cal, * d_omega, * d_y_cal;
+	float* val = NULL;
+	float* d_valsILU0;
+	float* valsILU0;
+	float rsum, diff, err = 0.0;
+	float qaerr1, qaerr2 = 0.0;
+	float dot, numerator, denominator, nalpha;
+	const float floatone = 1.0;
+	const float floatzero = 0.0;
 
 	if (codeOpt == "gpu")
 	{
 
 		//-------Allocating arrays in device memory-------
+		gpuErrchk(cudaMalloc(&d_A, nnz * sizeof(*d_A)));
+		gpuErrchk(cudaMalloc(&d_A_RowIndices, (Nrows + 1) * sizeof(*d_A_RowIndices)));
+		gpuErrchk(cudaMalloc(&d_A_ColIndices, nnz * sizeof(*d_A_ColIndices)));
+		gpuErrchk(cudaMalloc(&d_nnzPerVector, Nrows * sizeof(*d_nnzPerVector)));
 
 		cudaMalloc((void**)& d_MAX, (1) * sizeof(double));
 
@@ -989,55 +1296,6 @@ int main(int argc,													//		   Number of strings in array argv
 	else
 	{
 		neighbour_cuda_2d_gpu(TP, d_x, d_y, DELTA, re, d_neighb, Xmin, Xmax, Ymin, Ymax);
-
-		//Ista = new int[tnc + 1];
-		//Iend = new int[tnc + 1];
-		//ip = new int[TP + 1];
-
-		//for (int i = 1; i <= tnc; i++)
-		//{
-		//	Ista[i] = 1;
-		//	Iend[i] = 0;
-		//}
-
-		//for (int k = 1; k <= TP; k++)
-		//{
-		//	icell = int((x[k] - Xmin) / re) + 1;
-		//	jcell = int((y[k] - Ymin) / re) + 1;
-		//	if (threedim)
-		//	{
-		//		kcell = int((z[k] - Zmin) / (re + DELTA)) + 1;
-		//		Cnum = icell + (jcell - 1) * ncx + (kcell - 1) * ncx * ncy;
-		//	}
-		//	else
-		//	{
-		//		Cnum = icell + (jcell - 1) * ncx;					//		   Cell number in which particle k is located  
-		//	}
-		//	Iend[Cnum]++;											//		   Number of particle in cell Cnum
-
-		//	for (int m = Iend[tnc]; m >= Iend[Cnum]; m--)
-		//	{
-		//		if (m > 0)
-		//		{
-		//			ip[m + 1] = ip[m];
-		//		}
-		//	}
-
-		//	for (int m = Cnum + 1; m <= tnc; m++)
-		//	{
-		//		Ista[m]++;
-		//		Iend[m]++;
-		//	}
-
-		//	ip[Iend[Cnum]] = k;
-		//}
-
-		//cudaMemcpy(d_ip, ip, (TP + 1) * sizeof(int), cudaMemcpyHostToDevice);
-		//cudaMemcpy(d_Ista, Ista, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-		//cudaMemcpy(d_Iend, Iend, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-
-		//if (division > 0) neighbor3 << <division, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
-		//if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
 	}
 	
 
@@ -1096,26 +1354,10 @@ int main(int argc,													//		   Number of strings in array argv
 			{
 				//NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
 				neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
-
 			}
 			else
 			{
 				neighbour_cuda_2d_gpu(TP, d_x, d_y, DELTA, re, d_neighb, Xmin, Xmax, Ymin, Ymax);
-				/*if (divisionNeigh1 > 0) neighbor1 << <divisionNeigh1, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, re, DELTA, TP, d_x, d_y, d_neighb, d_Ista, d_Iend, d_nc, d_ip);
-				if (modNeigh1 > 0) neighbor1 << <1, modNeigh1 >> > ((divisionNeigh1 * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, re, DELTA, TP, d_x, d_y, d_neighb, d_Ista, d_Iend, d_nc, d_ip);
-				cudaDeviceSynchronize();
-
-				cudaMemcpy(Ista, d_Ista, (tnc + 1) * sizeof(int), cudaMemcpyDeviceToHost);
-				cudaMemcpy(Iend, d_Iend, (tnc + 1) * sizeof(int), cudaMemcpyDeviceToHost);
-
-				neighbor2gpu(TP, Xmin, Ymin, Zmin, Xmax, Ymax, Zmax, re, DELTA, ncx, ncy, tnc, x, y, z, Iend, Ista, ip, DIM, codeOpt);
-
-				cudaMemcpy(d_ip, ip, (TP + 1) * sizeof(int), cudaMemcpyHostToDevice);
-				cudaMemcpy(d_Ista, Ista, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-				cudaMemcpy(d_Iend, Iend, (tnc + 1) * sizeof(int), cudaMemcpyHostToDevice);
-
-				if (division > 0) neighbor3 << <division, max_threads_per_block >> > (1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);
-				if (mod > 0) neighbor3 << <1, mod >> > ((division * max_threads_per_block) + 1, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, d_x, d_y, d_z, d_neighb, d_Ista, d_Iend, d_nc, d_ip, DIM);*/
 			}
 		}
 
@@ -1131,11 +1373,9 @@ int main(int argc,													//		   Number of strings in array argv
 			{
 				if (divisionPress > 0) turb1 << <divisionPress, max_threads_per_block >> > (GP + 1, re, d_neighb, d_x, d_y, d_z, coll, KTYPE, d_unew, d_vnew, d_wnew, n0, d_NEUt, Cs, DL, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
 				if (modPress > 0) turb1 << <1, modPress >> > ((divisionPress * max_threads_per_block) + GP + 1, re, d_neighb, d_x, d_y, d_z, coll, KTYPE, d_unew, d_vnew, d_wnew, n0, d_NEUt, Cs, DL, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
-				cudaDeviceSynchronize();
 
 				if (divisionPress > 0) turb2 << <divisionPress, max_threads_per_block >> > (GP + 1, re, d_neighb, d_x, d_y, d_z, coll, KTYPE, n0, d_NEUt, d_TURB1, d_TURB2, d_TURB3, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
 				if (modPress > 0) turb2 << <1, modPress >> > ((divisionPress * max_threads_per_block) + GP + 1, re, d_neighb, d_x, d_y, d_z, coll, KTYPE, n0, d_NEUt, d_TURB1, d_TURB2, d_TURB3, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
-				cudaDeviceSynchronize();
 			}
 		}
 
@@ -1155,12 +1395,12 @@ int main(int argc,													//		   Number of strings in array argv
 
 		if (codeOpt != "gpu")
 		{
-			VISCOSITY(re, TP, Fluid2_type, PTYPE, MEU, NEU1, NEU2, Rho1, Rho2, neighb, x, y, z, KTYPE, unew, vnew, wnew, n0, C, PHI, I, cohes, II, yield_stress, phat, MEU0, N, DIM, codeOpt);
+			VISCOSITY(re, TP, Fluid2_type, PTYPE, MEU, NEU1, NEU2, Rho1, Rho2, neighb, x, y, z, KTYPE, unew, vnew, wnew, n0, C, PHI, I, cohes, II, yield_stress, phat, MEU0, N_PL, DIM, codeOpt);
 		}
 		else
 		{
-			if (division > 0) viscosity << <division, max_threads_per_block >> > (1, re, TP, Fluid2_type, d_PTYPE, d_MEU, NEU1, NEU2, Rho1, Rho2, d_neighb, d_x, d_y, d_z, KTYPE, d_unew, d_vnew, d_wnew, n0, d_C, PHI, I, cohes, II, yield_stress, d_phat, MEU0, N, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
-			if (mod > 0) viscosity << <1, mod >> > ((division * max_threads_per_block) + 1, re, TP, Fluid2_type, d_PTYPE, d_MEU, NEU1, NEU2, Rho1, Rho2, d_neighb, d_x, d_y, d_z, KTYPE, d_unew, d_vnew, d_wnew, n0, d_C, PHI, I, cohes, II, yield_stress, d_phat, MEU0, N, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
+			if (division > 0) viscosity << <division, max_threads_per_block >> > (1, re, TP, Fluid2_type, d_PTYPE, d_MEU, NEU1, NEU2, Rho1, Rho2, d_neighb, d_x, d_y, d_z, KTYPE, d_unew, d_vnew, d_wnew, n0, d_C, PHI, I, cohes, II, yield_stress, d_phat, MEU0, N_PL, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
+			if (mod > 0) viscosity << <1, mod >> > ((division * max_threads_per_block) + 1, re, TP, Fluid2_type, d_PTYPE, d_MEU, NEU1, NEU2, Rho1, Rho2, d_neighb, d_x, d_y, d_z, KTYPE, d_unew, d_vnew, d_wnew, n0, d_C, PHI, I, cohes, II, yield_stress, d_phat, MEU0, N_PL, d_S11, d_S12, d_S22, d_S13, d_S23, d_S33, DIM);
 		}
 
 		//------------------------------------ Prediction --------------------------------------
@@ -1186,7 +1426,6 @@ int main(int argc,													//		   Number of strings in array argv
 		{
 			if (division > 0) pnumstar << <division, max_threads_per_block >> > (1, KTYPE, DIM, TP, re, d_neighb, d_xstar, d_ystar, d_zstar, d_nstar);
 			if (mod > 0) pnumstar << <1, mod >> > ((division * max_threads_per_block) + 1, KTYPE, DIM, TP, re, d_neighb, d_xstar, d_ystar, d_zstar, d_nstar);
-			cudaDeviceSynchronize();
 		}
 
 		//--------------------------- Boundary condition for matrix calculation --------------------------------
@@ -1203,7 +1442,6 @@ int main(int argc,													//		   Number of strings in array argv
 				if (mod > 0) bconCalc << <1, mod >> > ((division * max_threads_per_block) + 1, d_PTYPE, d_bcon, d_nstar, n0, dirichlet, TP);
 			}
 		}
-
 		//------------------------------ Pressure calculation ------------------------------------
 
 		if (codeOpt != "gpu")
@@ -1220,10 +1458,14 @@ int main(int argc,													//		   Number of strings in array argv
 			}
 			else if (Method == 1)
 			{
-
-				cudaMemset(d_pnew, 0, (TP + 1) * sizeof(double));
 				cudaMemset(d_poiss, 0, (NEIGHBORS + 1) * (TP + 1) * sizeof(double));
 				cudaMemset(d_ic, 0, (NEIGHBORS + 1) * (TP + 1) * sizeof(double));
+				cudaMemset(d_source, 0, (TP + 1) * sizeof(double));
+
+				//cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
+				std::ofstream outneigh;
+				std::string filename = "outneigh_convert" + std::to_string(Tstep) + ".txt";
+				outneigh.open(filename, 'w');
 
 				if (division > 0) matrixCalc << <division, max_threads_per_block >> > (1, re, d_xstar, d_ystar, d_zstar, KTYPE, d_nstar, n0, Rho1, lambda, DT[0], DIM, d_neighb, d_poiss, d_bcon, matopt);
 				if (mod > 0) matrixCalc << <1, mod >> > ((division * max_threads_per_block) + 1, re, d_xstar, d_ystar, d_zstar, KTYPE, d_nstar, n0, Rho1, lambda, DT[0], DIM, d_neighb, d_poiss, d_bcon, matopt);
@@ -1235,9 +1477,116 @@ int main(int argc,													//		   Number of strings in array argv
 				if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
 				cudaDeviceSynchronize();
 				cudaError_t error = cudaGetLastError();
-				cudaMemset(d_pnew, 0, sizeof(double) * (TP + 1));
 
-				if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
+				//*********************************************************************************************************************************************************************************************************************
+
+				//cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
+				//cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
+				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
+				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
+
+				///* analyse the lower and upper triangular factors */
+				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
+				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
+				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex, info_l));
+
+				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
+				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
+				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex, info_u));
+
+				///* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
+				//double start_ilu, stop_ilu;
+				//printf("CUSPARSE csrilu0 ");
+				//start_ilu = second();
+				//devPtrMrowsIndex = devPtrArowsIndex;
+				//devPtrMcolsIndex = devPtrAcolsIndex;
+				//checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, devPtrArowsIndex, devPtrAcolsIndex, info_l));
+
+				///* run the test */
+				//int num_iterations = 1; //10; 
+				//for (int count = 0; count < num_iterations; count++) {
+
+				//	gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
+				//		descra, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex,
+				//		descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
+				//		info_l, info_u,
+				//		devPtrF, devPtrR, devPtrRW, devPtrP, devPtrPW, devPtrS, devPtrT, devPtrV, devPtrX, maxit, tol, ttt_sv);
+
+				//}
+
+				///* destroy the analysis info (for lower and upper triangular factors) */
+				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
+				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
+
+
+				//*********************************************************************************************************************************************************************************************************************
+
+				//to host: bcon, neighb, poiss, source, ic
+
+				cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
+
+				for (int j = 1; j <= TP; j++) {
+					for (int i = 0; i <= h_neighb[j * (NEIGHBORS)+1]; i++) {
+						neighb[j][i + 2] = h_neighb[j * (NEIGHBORS)+i + 2];
+					}
+					neighb[j][1] = h_neighb[j * (NEIGHBORS) + 1];
+				}
+
+				cudaMemcpy(h_poiss, d_poiss, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
+
+				for (int j = 1; j <= TP; j++) {
+					for (int i = 0; i < NEIGHBORS; i++) {
+						poiss[j][i + 1] = h_poiss[j * (NEIGHBORS)+i + 1];
+					}
+					//poiss[j][1] = h_poiss[j * (NEIGHBORS)+1];
+				}
+
+
+				cudaMemcpy(h_ic, d_ic, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
+
+				for (int j = 1; j <= TP; j++) {
+					for (int i = 0; i < NEIGHBORS; i++) {
+						ic[j][i + 1] = h_ic[j * (NEIGHBORS)+i + 1];
+					}
+					//ic[j + 1][1] = h_ic[j * (NEIGHBORS)+1];
+				}
+
+
+				//for (int j = 1; j <= TP; j++) {
+				//	for (int i = 0; i < NEIGHBORS; i++) {
+				//		outneigh << poiss[j][i+1] << " ";
+				//	}
+				//	outneigh << std::endl;
+				//}
+
+				//outneigh.close();
+				cudaMemcpy(bcon, d_bcon, (TP + 1) * sizeof(int), cudaMemcpyDeviceToHost);
+				cudaMemcpy(source, d_source, (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
+				cudaMemset(d_pnew, 0, (TP + 1) * sizeof(double));
+				cudaDeviceSynchronize();
+
+				CGM(TP, source, IterMax, MAXresi, poiss, neighb, bcon, pnew, imax, ic, DT[0], eps, imin, codeOpt);
+
+
+				for (int I = 1; I <= TP; I++)
+				{
+					if (pnew[I] < PMIN)
+					{
+						pnew[I] = PMIN;
+					}
+					if (pnew[I] > PMAX || pnew[I] * 0.0 != 0.0)
+					{
+						if (pnew[I] * 0.0 != 0.0) cout << "pressao dando infinito...\n";
+						pnew[I] = PMAX;
+					}
+
+				}
+
+				//to device: pnew
+				cudaMemcpy(d_pnew, pnew, sizeof(double) * (TP + 1), cudaMemcpyHostToDevice);
+
+				
+				/*if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 				if (mod > 0) cgm1 << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 
 				if (division > 0) cgm2 << <division, max_threads_per_block >> > (1, d_r1, d_source, d_s1);
@@ -1245,13 +1594,13 @@ int main(int argc,													//		   Number of strings in array argv
 
 				cudaMemcpy(d_aux, d_r1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
-				if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-				if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
+				if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+				if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 
 				cudaMemcpy(d_aux, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
-				if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-				if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
+				if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+				if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 
 				cudaMemcpy(d_p1, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 				cudaMemset(d_rqo, 0, sizeof(float));
@@ -1280,14 +1629,14 @@ int main(int argc,													//		   Number of strings in array argv
 
 					cudaMemcpy(d_aux, d_r1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
-					if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-					if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-
+					if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+					if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+					
 					cudaMemcpy(d_aux, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
-					if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-					if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb);
-
+					if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+					if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+					
 					cudaMemset(d_rqn, 0, sizeof(float));
 
 					if (division > 0) cgm10 << <division, max_threads_per_block >> > (1, d_r1, d_q1, d_bcon, d_rqn);
@@ -1312,7 +1661,8 @@ int main(int argc,													//		   Number of strings in array argv
 				}
 
 				if (division > 0) pnewSet << <division, max_threads_per_block >> > (1, d_pnew, PMIN, PMAX);
-				if (mod > 0) pnewSet << <1, mod >> > ((division * max_threads_per_block) + 1, d_pnew, PMIN, PMAX);
+				if (mod > 0) pnewSet << <1, mod >> > ((division * max_threads_per_block) + 1, d_pnew, PMIN, PMAX);*/
+
 			}
 		}
 
@@ -1394,7 +1744,7 @@ int main(int argc,													//		   Number of strings in array argv
 		//------------------------------------------ Printing results --------------------------------------------------------
 
 		if (outAll)
-			saveParticles(TP, Tstep, x, y, z, u, v, w, p, PTYPE, DIM);
+			saveParticles(TP, Tstep, x, y, /*z,*/ u, v, /*w,*/ p, PTYPE, DIM);
 
 
 		if (outFluid)

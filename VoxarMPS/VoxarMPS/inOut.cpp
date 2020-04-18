@@ -101,7 +101,7 @@ void getVTU(double*& x, double*& y, double*& z, double*& unew, double*& vnew, do
 	in.close();
 }
 
-void saveParticles(int TP, int Tstep, double* x, double* y, double* z, double* unew, double* vnew, double* wnew, double* pnew, int* PTYPE, int dim)
+void saveParticles(int TP, int Tstep, double* x, double* y, /*double* z,*/ double* unew, double* vnew, /*double* wnew,*/ double* pnew, int* PTYPE, int dim)
 {
 	int nump = TP, number = Tstep;
 	ofstream out;
@@ -132,7 +132,7 @@ void saveParticles(int TP, int Tstep, double* x, double* y, double* z, double* u
 	if (dim == 3)
 	{
 		for (b = 1; b <= nump; b++)
-			out << x[b] << " " << y[b] << " " << z[b] << " ";
+			out << x[b] << " " << y[b] /*<< " " << z[b]*/ << " ";
 	}
 	else
 	{
@@ -151,7 +151,7 @@ void saveParticles(int TP, int Tstep, double* x, double* y, double* z, double* u
 	if (dim == 3)
 	{
 		for (b = 1; b <= nump; b++)
-			out << unew[b] << " " << vnew[b] << " " << wnew[b] << " ";
+			out << unew[b] << " " << vnew[b]/* << " " << wnew[b]*/ << " ";
 	}
 	else
 	{
