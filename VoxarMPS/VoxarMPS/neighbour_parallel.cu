@@ -297,19 +297,19 @@ void neighbour_cuda_2d(int TP, double *x, double *y, double DELTA, double re, in
 
 
 
-	//cudaMemcpy(h_neighb, d_neighb, sizeneighb, cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_neighb, d_neighb, sizeneighb, cudaMemcpyDeviceToHost);
 
 
 
-	//// ---------------------------- Populating neighb array ----------------------
+	// ---------------------------- Populating neighb array ----------------------
 
 
-	//for (int j = 0; j < TP; j++) {
-	//	for (int i = 0; i < h_neighb[j*(MAX_NEIGHB + 1)]; i++) {
-	//		neighb[j + 1][i + 2] = h_neighb[j*(MAX_NEIGHB + 1) + i + 1];
-	//	}
-	//	neighb[j + 1][1] = h_neighb[j*(MAX_NEIGHB + 1)] + 1;
-	//}
+	for (int j = 0; j < TP; j++) {
+		for (int i = 0; i < h_neighb[j*(MAX_NEIGHB + 1)]; i++) {
+			neighb[j + 1][i + 2] = h_neighb[j*(MAX_NEIGHB + 1) + i + 1];
+		}
+		neighb[j + 1][1] = h_neighb[j*(MAX_NEIGHB + 1)] + 1;
+	}
 
 
 	//std::ofstream outneigh;
@@ -438,7 +438,7 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 
 	// -------------------------- Creating neighbour arrays for each particle ------------------------------
 
-	//cudaMemset(d_neighb, 0, sizeneighb);
+	cudaMemset(d_neighb, 0, sizeneighb);
 
 	createNeighbourArraysCUDAgpu << <TP / THREADS_PER_BLOCK + 1, THREADS_PER_BLOCK >> > (0, d_neighb, d_cellStart, d_cellEnd, d_particleHash, d_particleid, d_ncx, d_ncy, d_max_neighb, d_TP, d_re, d_DELTA, d_x, d_y);
 

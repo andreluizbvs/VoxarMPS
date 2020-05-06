@@ -1115,11 +1115,29 @@ int main(int argc,													//		   Number of strings in array argv
 	double* d_A = NULL;
 	int* d_A_RowIndices = NULL;
 	int* d_A_ColIndices = NULL;
+	cusparseHandle_t cusparseHandle = 0;
+	cublasHandle_t cublasHandle = 0;
+	cusparseMatDescr_t descra = 0;
+	cusparseMatDescr_t descrm = 0;
+	cusparseSolveAnalysisInfo_t info_l = 0;
+	cusparseSolveAnalysisInfo_t info_u = 0;
+	double* devPtrF = 0;
+	double* devPtrR = 0;
+	double* devPtrRW = 0;
+	double* devPtrPW = 0;
+	double* devPtrS = 0;
+	double* devPtrT = 0;
+	double* devPtrV = 0;
+	double ttt_sv = 0.0;
+	int matrixM = TP+1;
+	int matrixN = TP+1;
+	double* devPtrMval = 0;
+	int* devPtrMcolsIndex = 0;
+	int* devPtrMrowsIndex = 0;
 	const int max_iter = 1000;
 	int k, M = 0, N = 0, nz = 0, * I_cal = NULL, * J_cal = NULL;
 	int* d_col, * d_row;
 	int qatest = 0;
-	const float tol = 1e-12f;
 	float * rhs;
 	float r0, r1, alpha, beta;
 	float* d_val;
@@ -1133,15 +1151,76 @@ int main(int argc,													//		   Number of strings in array argv
 	float dot, numerator, denominator, nalpha;
 	const float floatone = 1.0;
 	const float floatzero = 0.0;
+	
+	int arraySizeX, arraySizeF, arraySizeR, arraySizeRW, arraySizeP, arraySizePW, arraySizeS, arraySizeT, arraySizeV, mNNZ;
+
+	/* compressed sparse row */
+	arraySizeX = matrixN;
+	arraySizeF = matrixM;
+	arraySizeR = matrixM;
+	arraySizeRW = matrixM;
+	arraySizeP = matrixN;
+	arraySizePW = matrixN;
+	arraySizeS = matrixM;
+	arraySizeT = matrixM;
+	arraySizeV = matrixM;
+	cusparseStatus_t status1, status2, status3;
+
+	/* initialize cublas */
+	if (cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS) {
+		fprintf(stderr, "!!!! CUBLAS initialization error\n");
+		return EXIT_FAILURE;
+	}
+	/* initialize cusparse */
+	status1 = cusparseCreate(&cusparseHandle);
+	if (status1 != CUSPARSE_STATUS_SUCCESS) {
+		fprintf(stderr, "!!!! CUSPARSE initialization error\n");
+		return EXIT_FAILURE;
+	}
+	/* create three matrix descriptors */
+	status1 = cusparseCreateMatDescr(&descra);
+	status2 = cusparseCreateMatDescr(&descrm);
+	if ((status1 != CUSPARSE_STATUS_SUCCESS) ||
+		(status2 != CUSPARSE_STATUS_SUCCESS)) {
+		fprintf(stderr, "!!!! CUSPARSE cusparseCreateMatDescr (coefficient matrix or preconditioner) error\n");
+		return EXIT_FAILURE;
+	}
+	int maxit = 2000; //5; //2000; //1000;  //50; //5; //50; //100; //500; //10000;
+	double tol = 0.0000001; //0.000001; //0.00001; //0.00000001; //0.0001; //0.001; //0.00000001; //0.1; //0.001; //0.00000001;
+	int *A_RowIndices = new int[ (Nrows + 1) * sizeof(*d_A_RowIndices)];
 
 	if (codeOpt == "gpu")
 	{
+
+		/* allocate device memory for csr matrix and vectors */
+		checkCudaErrors(cudaMalloc((void**)&devPtrF, sizeof(devPtrF[0]) * arraySizeF));
+		checkCudaErrors(cudaMalloc((void**)&devPtrR, sizeof(devPtrR[0]) * arraySizeR));
+		checkCudaErrors(cudaMalloc((void**)&devPtrRW, sizeof(devPtrRW[0]) * arraySizeRW));
+		checkCudaErrors(cudaMalloc((void**)&devPtrPW, sizeof(devPtrPW[0]) * arraySizePW));
+		checkCudaErrors(cudaMalloc((void**)&devPtrS, sizeof(devPtrS[0]) * arraySizeS));
+		checkCudaErrors(cudaMalloc((void**)&devPtrT, sizeof(devPtrT[0]) * arraySizeT));
+		checkCudaErrors(cudaMalloc((void**)&devPtrV, sizeof(devPtrV[0]) * arraySizeV));
+		/*checkCudaErrors(cudaMemcpy(A_RowIndices, d_A_RowIndices, (Nrows) * sizeof(int), cudaMemcpyDeviceToHost));
+		int mNNZ = A_RowIndices[matrixM + 1] - A_RowIndices[1];
+		int mSizeAval = mNNZ;*/
+		checkCudaErrors(cudaMalloc((void**)&devPtrMval, sizeof(devPtrMval[0]) * Nrows));
+		checkCudaErrors(cudaMemset((void*)devPtrMval, 0, sizeof(devPtrMval[0]) * Nrows));
 
 		//-------Allocating arrays in device memory-------
 		gpuErrchk(cudaMalloc(&d_A, nnz * sizeof(*d_A)));
 		gpuErrchk(cudaMalloc(&d_A_RowIndices, (Nrows + 1) * sizeof(*d_A_RowIndices)));
 		gpuErrchk(cudaMalloc(&d_A_ColIndices, nnz * sizeof(*d_A_ColIndices)));
 		gpuErrchk(cudaMalloc(&d_nnzPerVector, Nrows * sizeof(*d_nnzPerVector)));
+		/* clean memory */
+		checkCudaErrors(cudaMemset((void*)devPtrF, 0, sizeof(devPtrF[0]) * arraySizeF));
+		checkCudaErrors(cudaMemset((void*)devPtrR, 0, sizeof(devPtrR[0]) * arraySizeR));
+		checkCudaErrors(cudaMemset((void*)devPtrRW, 0, sizeof(devPtrRW[0]) * arraySizeRW));
+		checkCudaErrors(cudaMemset((void*)devPtrPW, 0, sizeof(devPtrPW[0]) * arraySizePW));
+		checkCudaErrors(cudaMemset((void*)devPtrS, 0, sizeof(devPtrS[0]) * arraySizeS));
+		checkCudaErrors(cudaMemset((void*)devPtrT, 0, sizeof(devPtrT[0]) * arraySizeT));
+		checkCudaErrors(cudaMemset((void*)devPtrV, 0, sizeof(devPtrV[0]) * arraySizeV));
+
+		
 
 		cudaMalloc((void**)& d_MAX, (1) * sizeof(double));
 
@@ -1473,117 +1552,131 @@ int main(int argc,													//		   Number of strings in array argv
 				if (division > 0) sourceCalc << <division, max_threads_per_block >> > (1, TP, d_PTYPE, d_bcon, d_nstar, n0, DT[0], d_source, d_neighb, d_xstar, d_ystar, d_zstar, d_ustar, d_vstar, d_wstar, re, DIM, srcopt);
 				if (mod > 0) sourceCalc << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_PTYPE, d_bcon, d_nstar, n0, DT[0], d_source, d_neighb, d_xstar, d_ystar, d_zstar, d_ustar, d_vstar, d_wstar, re, DIM, srcopt);
 
-				if (division > 0) incdecom << <division, max_threads_per_block >> > (1, TP, d_bcon, d_neighb, d_poiss, d_ic);
-				if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
+				//if (division > 0) incdecom << <division, max_threads_per_block >> > (1, TP, d_bcon, d_neighb, d_poiss, d_ic);
+				//if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
 				cudaDeviceSynchronize();
 				cudaError_t error = cudaGetLastError();
 
 				//*********************************************************************************************************************************************************************************************************************
 
-				//cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
-				//cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
-				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
-				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
+				cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
+				cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
+				checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
+				checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
 
-				///* analyse the lower and upper triangular factors */
-				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
-				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
-				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex, info_l));
+				int matrixSizeAval = nnz;
+				/* analyse the lower and upper triangular factors */
+				double ttl = second();
+				checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
+				checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
+				checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_l));
+				checkCudaErrors(cudaDeviceSynchronize());
+				double ttl2 = second();
 
-				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
-				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
-				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex, info_u));
+				double ttu = second();
+				checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
+				checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
+				checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_u));
+				checkCudaErrors(cudaDeviceSynchronize());
+				double ttu2 = second();
+				ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
+				printf("analysis lower %f (s), upper %f (s) \n", ttl2 - ttl, ttu2 - ttu);
 
-				///* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
-				//double start_ilu, stop_ilu;
-				//printf("CUSPARSE csrilu0 ");
-				//start_ilu = second();
-				//devPtrMrowsIndex = devPtrArowsIndex;
-				//devPtrMcolsIndex = devPtrAcolsIndex;
-				//checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, devPtrArowsIndex, devPtrAcolsIndex, info_l));
+				checkCudaErrors(cudaMemcpy(devPtrMval, d_A, (size_t)(matrixSizeAval * sizeof(devPtrMval[0])), cudaMemcpyDeviceToDevice));
+				/* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
+				double start_ilu, stop_ilu;
+				printf("CUSPARSE csrilu0 ");
+				start_ilu = second();
+				devPtrMrowsIndex = d_A_RowIndices;
+				devPtrMcolsIndex = d_A_ColIndices;
 
-				///* run the test */
-				//int num_iterations = 1; //10; 
-				//for (int count = 0; count < num_iterations; count++) {
+				checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, d_A_RowIndices, d_A_ColIndices, info_l));
+				checkCudaErrors(cudaDeviceSynchronize());
+				stop_ilu = second();
+				fprintf(stdout, "time(s) = %10.8f \n", stop_ilu - start_ilu);
 
-				//	gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
-				//		descra, devPtrAval, devPtrArowsIndex, devPtrAcolsIndex,
-				//		descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
-				//		info_l, info_u,
-				//		devPtrF, devPtrR, devPtrRW, devPtrP, devPtrPW, devPtrS, devPtrT, devPtrV, devPtrX, maxit, tol, ttt_sv);
+				/* run the test */
+				int num_iterations = 1; //10; 
+				for (int count = 0; count < num_iterations; count++) {
 
-				//}
+					gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
+						descra, d_A, d_A_RowIndices, d_A_ColIndices,
+						descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
+						info_l, info_u,
+						devPtrF, devPtrR, devPtrRW, d_source, devPtrPW, devPtrS, devPtrT, devPtrV, d_pnew, maxit, tol, ttt_sv);
 
-				///* destroy the analysis info (for lower and upper triangular factors) */
-				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
-				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
+				}
+
+				/* destroy the analysis info (for lower and upper triangular factors) */
+				checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
+				checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
 
 
 				//*********************************************************************************************************************************************************************************************************************
 
 				//to host: bcon, neighb, poiss, source, ic
 
-				cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
+				//cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
 
-				for (int j = 1; j <= TP; j++) {
-					for (int i = 0; i <= h_neighb[j * (NEIGHBORS)+1]; i++) {
-						neighb[j][i + 2] = h_neighb[j * (NEIGHBORS)+i + 2];
-					}
-					neighb[j][1] = h_neighb[j * (NEIGHBORS) + 1];
-				}
+				//for (int j = 1; j <= TP; j++) {
+				//	for (int i = 0; i <= h_neighb[j * (NEIGHBORS)+1]; i++) {
+				//		neighb[j][i + 2] = h_neighb[j * (NEIGHBORS)+i + 2];
+				//	}
+				//	neighb[j][1] = h_neighb[j * (NEIGHBORS) + 1];
+				//}
 
-				cudaMemcpy(h_poiss, d_poiss, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-
-				for (int j = 1; j <= TP; j++) {
-					for (int i = 0; i < NEIGHBORS; i++) {
-						poiss[j][i + 1] = h_poiss[j * (NEIGHBORS)+i + 1];
-					}
-					//poiss[j][1] = h_poiss[j * (NEIGHBORS)+1];
-				}
-
-
-				cudaMemcpy(h_ic, d_ic, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-
-				for (int j = 1; j <= TP; j++) {
-					for (int i = 0; i < NEIGHBORS; i++) {
-						ic[j][i + 1] = h_ic[j * (NEIGHBORS)+i + 1];
-					}
-					//ic[j + 1][1] = h_ic[j * (NEIGHBORS)+1];
-				}
-
+				//cudaMemcpy(h_poiss, d_poiss, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
 
 				//for (int j = 1; j <= TP; j++) {
 				//	for (int i = 0; i < NEIGHBORS; i++) {
-				//		outneigh << poiss[j][i+1] << " ";
+				//		poiss[j][i + 1] = h_poiss[j * (NEIGHBORS)+i + 1];
 				//	}
-				//	outneigh << std::endl;
+				//	//poiss[j][1] = h_poiss[j * (NEIGHBORS)+1];
 				//}
 
-				//outneigh.close();
-				cudaMemcpy(bcon, d_bcon, (TP + 1) * sizeof(int), cudaMemcpyDeviceToHost);
-				cudaMemcpy(source, d_source, (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-				cudaMemset(d_pnew, 0, (TP + 1) * sizeof(double));
-				cudaDeviceSynchronize();
 
-				CGM(TP, source, IterMax, MAXresi, poiss, neighb, bcon, pnew, imax, ic, DT[0], eps, imin, codeOpt);
+				//cudaMemcpy(h_ic, d_ic, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
+
+				//for (int j = 1; j <= TP; j++) {
+				//	for (int i = 0; i < NEIGHBORS; i++) {
+				//		ic[j][i + 1] = h_ic[j * (NEIGHBORS)+i + 1];
+				//	}
+				//	//ic[j + 1][1] = h_ic[j * (NEIGHBORS)+1];
+				//}
 
 
-				for (int I = 1; I <= TP; I++)
-				{
-					if (pnew[I] < PMIN)
-					{
-						pnew[I] = PMIN;
-					}
-					if (pnew[I] > PMAX || pnew[I] * 0.0 != 0.0)
-					{
-						if (pnew[I] * 0.0 != 0.0) cout << "pressao dando infinito...\n";
-						pnew[I] = PMAX;
-					}
+				////for (int j = 1; j <= TP; j++) {
+				////	for (int i = 0; i < NEIGHBORS; i++) {
+				////		outneigh << poiss[j][i+1] << " ";
+				////	}
+				////	outneigh << std::endl;
+				////}
 
-				}
+				////outneigh.close();
+				//cudaMemcpy(bcon, d_bcon, (TP + 1) * sizeof(int), cudaMemcpyDeviceToHost);
+				//cudaMemcpy(source, d_source, (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
+				//cudaMemset(d_pnew, 0, (TP + 1) * sizeof(double));
+				//cudaDeviceSynchronize();
 
-				//to device: pnew
-				cudaMemcpy(d_pnew, pnew, sizeof(double) * (TP + 1), cudaMemcpyHostToDevice);
+				//CGM(TP, source, IterMax, MAXresi, poiss, neighb, bcon, pnew, imax, ic, DT[0], eps, imin, codeOpt);
+
+
+				//for (int I = 1; I <= TP; I++)
+				//{
+				//	if (pnew[I] < PMIN)
+				//	{
+				//		pnew[I] = PMIN;
+				//	}
+				//	if (pnew[I] > PMAX || pnew[I] * 0.0 != 0.0)
+				//	{
+				//		if (pnew[I] * 0.0 != 0.0) cout << "pressao dando infinito...\n";
+				//		pnew[I] = PMAX;
+				//	}
+
+				//}
+
+				////to device: pnew
+				//cudaMemcpy(d_pnew, pnew, sizeof(double) * (TP + 1), cudaMemcpyHostToDevice);
 
 				
 				/*if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
