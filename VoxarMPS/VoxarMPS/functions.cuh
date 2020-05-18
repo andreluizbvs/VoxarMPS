@@ -74,7 +74,7 @@ void BC(int slip, int TP, int GP, int WP, int* PTYPE, int I, int** neighb, doubl
 double* PHATCALC(int TP, int** neighb, double* pnew, double* phat, string codeOpt);
 
 void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** neighb, double* xstar, double* ystar, double* zstar, double* phat, int KTYPE, double re, double* RHO, double* ustar, double* vstar, double* wstar, double DT,
-	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt);
+	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt, double *nstar);
 
 int** NEIGHBOR(double Xmax, double Xmin, double Ymax, double Ymin, double Zmax, double Zmin, double re, double DELTA, int TP, double* x, double* y, double* z, int** neighb, int dim, string codeOpt);
 

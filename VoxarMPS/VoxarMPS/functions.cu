@@ -249,7 +249,7 @@ __global__ void phatCalc(int offset, int TP, int* neighb, double* pnew, double* 
 //===========================     Pressure gradient Calc.  ========================================
 //=================================================================================================
 void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** neighb, double* xstar, double* ystar, double* zstar, double* phat, int KTYPE, double re, double* RHO, double* ustar, double* vstar, double* wstar, double DT,
-	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt)
+	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt, double *nstar)
 {
 	if (codeOpt == "openmp")
 	{
@@ -262,7 +262,12 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 		double sum2 = 0;
 		double sum3 = 0;
 
-		if (KHcorrection == 1)
+		double summat1 = 0;
+		double summat2 = 0;
+		double summat3 = 0;
+		double vij = 1.0 / nstar[I];
+		//if (KHcorrection == 1)
+		if (true)
 		{
 			for (int l = 2; l <= neighb[I][1]; l++)
 			{
@@ -280,10 +285,37 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 					if (dim == 3)
 						sum3 = sum3 + (pnew[J] + pnew[I] - (phat[I] + phat[J])) * (zstar[J] - zstar[I]) * W(D, KTYPE, dim, re) / D / D;
 
+					summat1 = summat1 + diff(I, J, xstar) * diff(I, J, xstar) * vij * W(D, KTYPE, dim, re) / D / D;
+					summat2 = summat2 + diff(I, J, xstar) * diff(I, J, ystar) * vij * W(D, KTYPE, dim, re) / D / D;
+					summat3 = summat3 + diff(I, J, ystar) * diff(I, J, ystar) * vij * W(D, KTYPE, dim, re) / D / D;
+
 				}
 			}
 		}
-		else
+		
+		double det = 1.0 / (summat1 * summat3 - summat2 * summat2);
+		if (KHcorrection == 2) {
+			for (int l = 2; l <= neighb[I][1]; l++)
+			{
+				int J = neighb[I][l];
+				double D;
+				if (dim == 3)
+					D = dist3d(I, J, xstar, ystar, zstar);
+				else
+					D = dist2d(I, J, xstar, ystar);
+
+				if (I != J)
+				{
+					sum1 = sum1 + (pnew[J] - pnew[I]) / D / D * diff(I, J, xstar) * W(D, KTYPE, dim, re);
+					sum2 = sum2 + (pnew[J] - pnew[I]) / D / D * diff(I, J, ystar) * W(D, KTYPE, dim, re) ;
+					if (dim == 3)
+						sum3 = sum3 + (pnew[J] - pnew[I]) / D / D * diff(I, J, zstar) * W(D, KTYPE, dim, re);
+
+
+				}
+			}
+		}
+		else if(KHcorrection == 0)
 		{
 			for (int l = 2; l <= neighb[I][1]; l++)
 			{

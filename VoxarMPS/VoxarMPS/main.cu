@@ -540,7 +540,8 @@ int main(int argc,													//		   Number of strings in array argv
 	double MAXresi = 0.001;											//         Maximum acceptable residual for pressure calculation
 	double Cs = 0.18;												//         Smogorinsky Constant (For using in SPS-LES turbulence model
 	double DELTA = DL / 5.0;										//         Expansion value of background grid cells size.
-	double Ncorrection = 0.99;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
+	double Ncorrection = 1.0;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
+	//double Ncorrection = 0.99;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
 	int    SP = 0;													//         Number of storage particles
 	int    TP;														//         Total number of particles
 	int    KTYPE;													//         Kernel type
@@ -1552,64 +1553,64 @@ int main(int argc,													//		   Number of strings in array argv
 				if (division > 0) sourceCalc << <division, max_threads_per_block >> > (1, TP, d_PTYPE, d_bcon, d_nstar, n0, DT[0], d_source, d_neighb, d_xstar, d_ystar, d_zstar, d_ustar, d_vstar, d_wstar, re, DIM, srcopt);
 				if (mod > 0) sourceCalc << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_PTYPE, d_bcon, d_nstar, n0, DT[0], d_source, d_neighb, d_xstar, d_ystar, d_zstar, d_ustar, d_vstar, d_wstar, re, DIM, srcopt);
 
-				//if (division > 0) incdecom << <division, max_threads_per_block >> > (1, TP, d_bcon, d_neighb, d_poiss, d_ic);
-				//if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
+				if (division > 0) incdecom << <division, max_threads_per_block >> > (1, TP, d_bcon, d_neighb, d_poiss, d_ic);
+				if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
 				cudaDeviceSynchronize();
 				cudaError_t error = cudaGetLastError();
 
 				//*********************************************************************************************************************************************************************************************************************
 
-				cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
-				cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
-				checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
-				checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
+				//cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
+				//cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
+				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
+				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
 
-				int matrixSizeAval = nnz;
-				/* analyse the lower and upper triangular factors */
-				double ttl = second();
-				checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
-				checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
-				checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_l));
-				checkCudaErrors(cudaDeviceSynchronize());
-				double ttl2 = second();
+				//int matrixSizeAval = nnz;
+				///* analyse the lower and upper triangular factors */
+				//double ttl = second();
+				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
+				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
+				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_l));
+				//checkCudaErrors(cudaDeviceSynchronize());
+				//double ttl2 = second();
 
-				double ttu = second();
-				checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
-				checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
-				checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_u));
-				checkCudaErrors(cudaDeviceSynchronize());
-				double ttu2 = second();
-				ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
-				printf("analysis lower %f (s), upper %f (s) \n", ttl2 - ttl, ttu2 - ttu);
+				//double ttu = second();
+				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
+				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
+				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_u));
+				//checkCudaErrors(cudaDeviceSynchronize());
+				//double ttu2 = second();
+				//ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
+				//printf("analysis lower %f (s), upper %f (s) \n", ttl2 - ttl, ttu2 - ttu);
 
-				checkCudaErrors(cudaMemcpy(devPtrMval, d_A, (size_t)(matrixSizeAval * sizeof(devPtrMval[0])), cudaMemcpyDeviceToDevice));
-				/* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
-				double start_ilu, stop_ilu;
-				printf("CUSPARSE csrilu0 ");
-				start_ilu = second();
-				devPtrMrowsIndex = d_A_RowIndices;
-				devPtrMcolsIndex = d_A_ColIndices;
+				//checkCudaErrors(cudaMemcpy(devPtrMval, d_A, (size_t)(matrixSizeAval * sizeof(devPtrMval[0])), cudaMemcpyDeviceToDevice));
+				///* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
+				//double start_ilu, stop_ilu;
+				//printf("CUSPARSE csrilu0 ");
+				//start_ilu = second();
+				//devPtrMrowsIndex = d_A_RowIndices;
+				//devPtrMcolsIndex = d_A_ColIndices;
 
-				checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, d_A_RowIndices, d_A_ColIndices, info_l));
-				checkCudaErrors(cudaDeviceSynchronize());
-				stop_ilu = second();
-				fprintf(stdout, "time(s) = %10.8f \n", stop_ilu - start_ilu);
+				//checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, d_A_RowIndices, d_A_ColIndices, info_l));
+				//checkCudaErrors(cudaDeviceSynchronize());
+				//stop_ilu = second();
+				//fprintf(stdout, "time(s) = %10.8f \n", stop_ilu - start_ilu);
 
-				/* run the test */
-				int num_iterations = 1; //10; 
-				for (int count = 0; count < num_iterations; count++) {
+				///* run the test */
+				//int num_iterations = 1; //10; 
+				//for (int count = 0; count < num_iterations; count++) {
 
-					gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
-						descra, d_A, d_A_RowIndices, d_A_ColIndices,
-						descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
-						info_l, info_u,
-						devPtrF, devPtrR, devPtrRW, d_source, devPtrPW, devPtrS, devPtrT, devPtrV, d_pnew, maxit, tol, ttt_sv);
+				//	gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
+				//		descra, d_A, d_A_RowIndices, d_A_ColIndices,
+				//		descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
+				//		info_l, info_u,
+				//		devPtrF, devPtrR, devPtrRW, d_source, devPtrPW, devPtrS, devPtrT, devPtrV, d_pnew, maxit, tol, ttt_sv);
 
-				}
+				//}
 
-				/* destroy the analysis info (for lower and upper triangular factors) */
-				checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
-				checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
+				///* destroy the analysis info (for lower and upper triangular factors) */
+				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
+				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
 
 
 				//*********************************************************************************************************************************************************************************************************************
@@ -1679,7 +1680,7 @@ int main(int argc,													//		   Number of strings in array argv
 				//cudaMemcpy(d_pnew, pnew, sizeof(double) * (TP + 1), cudaMemcpyHostToDevice);
 
 				
-				/*if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
+				if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 				if (mod > 0) cgm1 << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 
 				if (division > 0) cgm2 << <division, max_threads_per_block >> > (1, d_r1, d_source, d_s1);
@@ -1754,7 +1755,7 @@ int main(int argc,													//		   Number of strings in array argv
 				}
 
 				if (division > 0) pnewSet << <division, max_threads_per_block >> > (1, d_pnew, PMIN, PMAX);
-				if (mod > 0) pnewSet << <1, mod >> > ((division * max_threads_per_block) + 1, d_pnew, PMIN, PMAX);*/
+				if (mod > 0) pnewSet << <1, mod >> > ((division * max_threads_per_block) + 1, d_pnew, PMIN, PMAX);
 
 			}
 		}
@@ -1776,7 +1777,7 @@ int main(int argc,													//		   Number of strings in array argv
 
 		if (codeOpt != "gpu")
 		{
-			PRESSGRAD(GP, WP, KHcorrection, TP, pnew, neighb, xstar, ystar, zstar, phat, KTYPE, re, RHO, ustar, vstar, wstar, DT[0], unew, vnew, wnew, relaxp, n0, VMAX, DIM, codeOpt);
+			PRESSGRAD(GP, WP, KHcorrection, TP, pnew, neighb, xstar, ystar, zstar, phat, KTYPE, re, RHO, ustar, vstar, wstar, DT[0], unew, vnew, wnew, relaxp, n0, VMAX, DIM, codeOpt, nstar);
 		}
 		else
 		{
