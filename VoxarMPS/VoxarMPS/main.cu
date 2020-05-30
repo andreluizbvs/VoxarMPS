@@ -26,267 +26,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std;
 
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort = true)
-{
-	if (code != cudaSuccess)
-	{
-		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-		if (abort) exit(code);
-	}
-}
-
-static const char* _cusparseGetErrorEnum(cusparseStatus_t error)
-{
-	switch (error)
-	{
-
-	case CUSPARSE_STATUS_SUCCESS:
-		return "CUSPARSE_STATUS_SUCCESS";
-
-	case CUSPARSE_STATUS_NOT_INITIALIZED:
-		return "CUSPARSE_STATUS_NOT_INITIALIZED";
-
-	case CUSPARSE_STATUS_ALLOC_FAILED:
-		return "CUSPARSE_STATUS_ALLOC_FAILED";
-
-	case CUSPARSE_STATUS_INVALID_VALUE:
-		return "CUSPARSE_STATUS_INVALID_VALUE";
-
-	case CUSPARSE_STATUS_ARCH_MISMATCH:
-		return "CUSPARSE_STATUS_ARCH_MISMATCH";
-
-	case CUSPARSE_STATUS_MAPPING_ERROR:
-		return "CUSPARSE_STATUS_MAPPING_ERROR";
-
-	case CUSPARSE_STATUS_EXECUTION_FAILED:
-		return "CUSPARSE_STATUS_EXECUTION_FAILED";
-
-	case CUSPARSE_STATUS_INTERNAL_ERROR:
-		return "CUSPARSE_STATUS_INTERNAL_ERROR";
-
-	case CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED:
-		return "CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED";
-
-	case CUSPARSE_STATUS_ZERO_PIVOT:
-		return "CUSPARSE_STATUS_ZERO_PIVOT";
-	}
-
-	return "<unknown>";
-}
-
-inline void __cusparseSafeCall(cusparseStatus_t err, const char* file, const int line)
-{
-	if (CUSPARSE_STATUS_SUCCESS != err) {
-		fprintf(stderr, "CUSPARSE error in file '%s', line %Ndims\Nobjs %s\nerror %Ndims: %s\nterminating!\Nobjs", __FILE__, __LINE__, err, \
-			_cusparseGetErrorEnum(err)); \
-			cudaDeviceReset(); assert(0); \
-	}
-}
-
-extern "C" void cusparseSafeCall(cusparseStatus_t err) { __cusparseSafeCall(err, __FILE__, __LINE__); }
-
-//profiling the code
-#define TIME_INDIVIDUAL_LIBRARY_CALLS
-
-#define DBICGSTAB_MAX_ULP_ERR   100
-#define DBICGSTAB_EPS           1.E-14f //9e-2
-
-#define CLEANUP()                       \
-do {                                    \
-    if (x)          free (x);           \
-    if (f)          free (f);           \
-    if (r)          free (r);           \
-    if (rw)         free (rw);          \
-    if (p)          free (p);           \
-    if (pw)         free (pw);          \
-    if (s)          free (s);           \
-    if (t)          free (t);           \
-    if (v)          free (v);           \
-    if (tx)         free (tx);          \
-    if (Aval)       free(Aval);         \
-    if (AcolsIndex) free(AcolsIndex);   \
-    if (ArowsIndex) free(ArowsIndex);   \
-    if (Mval)       free(Mval);         \
-    if (devPtrX)    checkCudaErrors(cudaFree (devPtrX));                    \
-    if (devPtrF)    checkCudaErrors(cudaFree (devPtrF));                    \
-    if (devPtrR)    checkCudaErrors(cudaFree (devPtrR));                    \
-    if (devPtrRW)   checkCudaErrors(cudaFree (devPtrRW));                   \
-    if (devPtrP)    checkCudaErrors(cudaFree (devPtrP));                    \
-    if (devPtrS)    checkCudaErrors(cudaFree (devPtrS));                    \
-    if (devPtrT)    checkCudaErrors(cudaFree (devPtrT));                    \
-    if (devPtrV)    checkCudaErrors(cudaFree (devPtrV));                    \
-    if (devPtrAval) checkCudaErrors(cudaFree (devPtrAval));                 \
-    if (devPtrAcolsIndex) checkCudaErrors(cudaFree (devPtrAcolsIndex));     \
-    if (devPtrArowsIndex) checkCudaErrors(cudaFree (devPtrArowsIndex));     \
-    if (devPtrMval)       checkCudaErrors(cudaFree (devPtrMval));           \
-    if (stream)           checkCudaErrors(cudaStreamDestroy(stream));       \
-    if (cublasHandle)     checkCudaErrors(cublasDestroy(cublasHandle));     \
-    if (cusparseHandle)   checkCudaErrors(cusparseDestroy(cusparseHandle)); \
-    fflush (stdout);                                    \
-} while (0)
-
-
-static void gpu_pbicgstab(cublasHandle_t cublasHandle, cusparseHandle_t cusparseHandle, int m, int n, int nnz,
-	const cusparseMatDescr_t descra, /* the coefficient matrix in CSR format */
-	double* a, int* ia, int* ja,
-	const cusparseMatDescr_t descrm, /* the preconditioner in CSR format, lower & upper triangular factor */
-	double* vm, int* im, int* jm,
-	cusparseSolveAnalysisInfo_t info_l, cusparseSolveAnalysisInfo_t info_u, /* the analysis of the lower and upper triangular parts */
-	double* f, double* r, double* rw, double* p, double* pw, double* s, double* t, double* v, double* x,
-	int maxit, double tol, double ttt_sv)
-{
-	double rho, rhop, beta, alpha, negalpha, omega, negomega, temp, temp2;
-	double nrmr, nrmr0;
-	rho = 0.0;
-	double zero = 0.0;
-	double one = 1.0;
-	double mone = -1.0;
-	int i = 0;
-	int j = 0;
-	double ttl, ttl2, ttu, ttu2, ttm, ttm2;
-	double ttt_mv = 0.0;
-
-	//WARNING: Analysis is done outside of the function (and the time taken by it is passed to the function in variable ttt_sv)
-
-	//compute initial residual r0=b-Ax0 (using initial guess in x)
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-	checkCudaErrors(cudaDeviceSynchronize());
-	ttm = second();
-#endif
-
-	checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, x, &zero, r));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-	cudaDeviceSynchronize();
-	ttm2 = second();
-	ttt_mv += (ttm2 - ttm);
-	//printf("matvec %f (s)\n",ttm2-ttm);
-#endif
-	checkCudaErrors(cublasDscal(cublasHandle, n, &mone, r, 1));
-	checkCudaErrors(cublasDaxpy(cublasHandle, n, &one, f, 1, r, 1));
-	//copy residual r into r^{\hat} and p
-	checkCudaErrors(cublasDcopy(cublasHandle, n, r, 1, rw, 1));
-	checkCudaErrors(cublasDcopy(cublasHandle, n, r, 1, p, 1));
-	checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr0));
-	//printf("gpu, init residual:norm %20.16f\n",nrmr0); 
-
-	for (i = 0; i < maxit; ) {
-		rhop = rho;
-		checkCudaErrors(cublasDdot(cublasHandle, n, rw, 1, r, 1, &rho));
-
-		if (i > 0) {
-			beta = (rho / rhop) * (alpha / omega);
-			negomega = -omega;
-			checkCudaErrors(cublasDaxpy(cublasHandle, n, &negomega, v, 1, p, 1));
-			checkCudaErrors(cublasDscal(cublasHandle, n, &beta, p, 1));
-			checkCudaErrors(cublasDaxpy(cublasHandle, n, &one, r, 1, p, 1));
-		}
-		//preconditioning step (lower and upper triangular solve)
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttl = second();
-#endif
-		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
-		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
-		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_l, p, t));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttl2 = second();
-		ttu = second();
-#endif
-		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
-		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
-		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_u, t, pw));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttu2 = second();
-		ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
-		//printf("solve lower %f (s), upper %f (s) \n",ttl2-ttl,ttu2-ttu);
-#endif
-
-		//matrix-vector multiplication
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttm = second();
-#endif
-
-		checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, pw, &zero, v));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttm2 = second();
-		ttt_mv += (ttm2 - ttm);
-		//printf("matvec %f (s)\n",ttm2-ttm);
-#endif
-
-		checkCudaErrors(cublasDdot(cublasHandle, n, rw, 1, v, 1, &temp));
-		alpha = rho / temp;
-		negalpha = -(alpha);
-		checkCudaErrors(cublasDaxpy(cublasHandle, n, &negalpha, v, 1, r, 1));
-		checkCudaErrors(cublasDaxpy(cublasHandle, n, &alpha, pw, 1, x, 1));
-		checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr));
-
-		if (nrmr < tol * nrmr0) {
-			j = 5;
-			break;
-		}
-
-		//preconditioning step (lower and upper triangular solve)
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttl = second();
-#endif
-		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
-		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
-		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_l, r, t));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttl2 = second();
-		ttu = second();
-#endif
-		checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
-		checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
-		checkCudaErrors(cusparseDcsrsv_solve(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, &one, descrm, vm, im, jm, info_u, t, s));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttu2 = second();
-		ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
-		//printf("solve lower %f (s), upper %f (s) \n",ttl2-ttl,ttu2-ttu);
-#endif
-		//matrix-vector multiplication
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttm = second();
-#endif
-
-		checkCudaErrors(cusparseDcsrmv(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, n, n, nnz, &one, descra, a, ia, ja, s, &zero, t));
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-		checkCudaErrors(cudaDeviceSynchronize());
-		ttm2 = second();
-		ttt_mv += (ttm2 - ttm);
-		//printf("matvec %f (s)\n",ttm2-ttm);
-#endif
-
-		checkCudaErrors(cublasDdot(cublasHandle, n, t, 1, r, 1, &temp));
-		checkCudaErrors(cublasDdot(cublasHandle, n, t, 1, t, 1, &temp2));
-		omega = temp / temp2;
-		negomega = -(omega);
-		checkCudaErrors(cublasDaxpy(cublasHandle, n, &omega, s, 1, x, 1));
-		checkCudaErrors(cublasDaxpy(cublasHandle, n, &negomega, t, 1, r, 1));
-
-		checkCudaErrors(cublasDnrm2(cublasHandle, n, r, 1, &nrmr));
-
-		if (nrmr < tol * nrmr0) {
-			i++;
-			j = 0;
-			break;
-		}
-		i++;
-	}
-
-#ifdef TIME_INDIVIDUAL_LIBRARY_CALLS
-	printf("gpu total solve time %f (s), matvec time %f (s)\n", ttt_sv, ttt_mv);
-#endif
-}
 
 __global__ void setDensity(int offset, double* d_RHO, const int TP, int* d_PTYPE, double Rho1, double Rho2)
 {
@@ -342,10 +81,12 @@ int main(int argc,													//		   Number of strings in array argv
 	bool matopt;
 	bool srcopt;
 	string codeOpt;
+
 	bool threedim;
 	bool outAll;
 	bool outFluid;
 	double stepsToCalcNeigh = 1.0;									//		   How many steps until the next neighborhood update
+	int noOfStepsToPrint = 1;
 
 	if (string(argv[1]) == "oil")
 	{
@@ -367,7 +108,6 @@ int main(int argc,													//		   Number of strings in array argv
 	{
 		test = "dam";
 	}
-
 	if (string(argv[2]) == "visc" || string(argv[2]) == "viscosity" || string(argv[2]) == "viscoplasticity" || string(argv[2]) == "true" || string(argv[2]) == "yes")
 	{
 		visc = true;
@@ -480,10 +220,10 @@ int main(int argc,													//		   Number of strings in array argv
 	double* zstar, * wstar, * wnew;
 
 
-	int** neighb, *h_neighb;
+	int** neighb, * h_neighb;
 	int* bcon;
-	double** poiss, *h_poiss;
-	double** ic, *h_ic;
+	double** poiss, * h_poiss;
+	double** ic, * h_ic;
 	double* source;
 	double dirichlet = 0.97;
 	int imin = 10, imax = 50;
@@ -540,8 +280,8 @@ int main(int argc,													//		   Number of strings in array argv
 	double MAXresi = 0.001;											//         Maximum acceptable residual for pressure calculation
 	double Cs = 0.18;												//         Smogorinsky Constant (For using in SPS-LES turbulence model
 	double DELTA = DL / 5.0;										//         Expansion value of background grid cells size.
-	double Ncorrection = 1.0;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
-	//double Ncorrection = 0.99;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
+	//double Ncorrection = 1.0;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
+	double Ncorrection = 0.99;										//         Correction of n0 value to improve the incompressibility and initial pressure fluctuation
 	int    SP = 0;													//         Number of storage particles
 	int    TP;														//         Total number of particles
 	int    KTYPE;													//         Kernel type
@@ -810,14 +550,15 @@ int main(int argc,													//		   Number of strings in array argv
 	cout << "    Maximum Pressure reached by one particle: " << PMAX << endl << endl << endl;
 
 	//--------------------------- Defining Dynamic Matrices ------------------------------	
+
 	x = new double[TP + 1]();
 	y = new double[TP + 1]();
-	/*if (threedim)*/ z = new double[TP + 1]();
+	if (threedim||true) z = new double[TP + 1]();
 
 	p = new double[TP + 1]();
 	u = new double[TP + 1]();
 	v = new double[TP + 1]();
-	if (threedim) w = new double[TP + 1]();
+	if (threedim || true) w = new double[TP + 1]();
 
 	PTYPE = new int[TP + 1]();
 
@@ -943,7 +684,7 @@ int main(int argc,													//		   Number of strings in array argv
 	TP = FP + GP + WP + SP;
 
 	if (outAll)
-		// saveParticles(TP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
+		saveParticles(TP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
 
 	if (outFluid)
 		saveFluidParticles(TP, FP, 0, x, y, z, u, v, w, p, PTYPE, DIM);
@@ -982,9 +723,6 @@ int main(int argc,													//		   Number of strings in array argv
 	if (threedim) { tnc = ncx * ncy * ncz; }						//		   Total number of cells   
 	else { tnc = ncx * ncy; }
 
-	h_neighb = new int[(NEIGHBORS + 1) * (TP + 1)]();
-	h_poiss = new double[(NEIGHBORS + 1) * (TP + 1)]();
-	h_ic = new double[(NEIGHBORS + 1)*(TP + 1)]();
 	neighb = new int* [TP + 1]();
 	for (int m = 0; m <= TP; m++)
 		neighb[m] = new int[NEIGHBORS + 1]();
@@ -1006,31 +744,28 @@ int main(int argc,													//		   Number of strings in array argv
 
 		xstar = new double[TP + 1]();
 		ystar = new double[TP + 1]();
-		if (threedim) zstar = new double[TP + 1]();
+		if (threedim || true) zstar = new double[TP + 1]();
 
 		ustar = new double[TP + 1]();
 		vstar = new double[TP + 1]();
-		/*if (threedim)*/ wstar = new double[TP + 1]();
+		if (threedim || true) wstar = new double[TP + 1]();
 
 		phat = new double[TP + 1]();
 		unew = new double[TP + 1]();
 		vnew = new double[TP + 1]();
-		/*if (threedim)*/ wnew = new double[TP + 1]();
+		if (threedim || true) wnew = new double[TP + 1]();
 		n = new double[TP + 1]();
 		nstar = new double[TP + 1]();
 		NEUt = new double[TP + 1]();
 		TURB1 = new double[TP + 1]();
 		TURB2 = new double[TP + 1]();
-		if (threedim) TURB3 = new double[TP + 1]();
+		if (threedim || true) TURB3 = new double[TP + 1]();
 
 		C = new double[TP + 1]();
 		MEU = new double[TP + 1]();
 		RHO = new double[TP + 1]();
 		SFX = new double[TP + 1]();
 		SFY = new double[TP + 1]();
-
-
-
 
 	}
 
@@ -1100,129 +835,10 @@ int main(int argc,													//		   Number of strings in array argv
 	double* d_s1 = NULL;
 	double* d_aux = NULL;
 	int* d_bcon = NULL;
-	cusparseHandle_t handle;    cusparseSafeCall(cusparseCreate(&handle));
-
-	const int Nrows = TP+1;
-	const int Ncols = NEIGHBORS+1;
-
-	cusparseMatDescr_t descrA;      cusparseSafeCall(cusparseCreateMatDescr(&descrA));
-	cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL);
-	cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO);
-
-	int nnz = 0;                                // --- Number of nonzero elements in dense matrix
-	const int lda = Nrows;                      // --- Leading dimension of dense matrix
-	// --- Device side number of nonzero elements per row
-	int* d_nnzPerVector = NULL;
-	double* d_A = NULL;
-	int* d_A_RowIndices = NULL;
-	int* d_A_ColIndices = NULL;
-	cusparseHandle_t cusparseHandle = 0;
-	cublasHandle_t cublasHandle = 0;
-	cusparseMatDescr_t descra = 0;
-	cusparseMatDescr_t descrm = 0;
-	cusparseSolveAnalysisInfo_t info_l = 0;
-	cusparseSolveAnalysisInfo_t info_u = 0;
-	double* devPtrF = 0;
-	double* devPtrR = 0;
-	double* devPtrRW = 0;
-	double* devPtrPW = 0;
-	double* devPtrS = 0;
-	double* devPtrT = 0;
-	double* devPtrV = 0;
-	double ttt_sv = 0.0;
-	int matrixM = TP+1;
-	int matrixN = TP+1;
-	double* devPtrMval = 0;
-	int* devPtrMcolsIndex = 0;
-	int* devPtrMrowsIndex = 0;
-	const int max_iter = 1000;
-	int k, M = 0, N = 0, nz = 0, * I_cal = NULL, * J_cal = NULL;
-	int* d_col, * d_row;
-	int qatest = 0;
-	float * rhs;
-	float r0, r1, alpha, beta;
-	float* d_val;
-	float* d_zm1, * d_zm2, * d_rm2;
-	float* d_r, * d_p_cal, * d_omega, * d_y_cal;
-	float* val = NULL;
-	float* d_valsILU0;
-	float* valsILU0;
-	float rsum, diff, err = 0.0;
-	float qaerr1, qaerr2 = 0.0;
-	float dot, numerator, denominator, nalpha;
-	const float floatone = 1.0;
-	const float floatzero = 0.0;
 	
-	int arraySizeX, arraySizeF, arraySizeR, arraySizeRW, arraySizeP, arraySizePW, arraySizeS, arraySizeT, arraySizeV, mNNZ;
-
-	/* compressed sparse row */
-	arraySizeX = matrixN;
-	arraySizeF = matrixM;
-	arraySizeR = matrixM;
-	arraySizeRW = matrixM;
-	arraySizeP = matrixN;
-	arraySizePW = matrixN;
-	arraySizeS = matrixM;
-	arraySizeT = matrixM;
-	arraySizeV = matrixM;
-	cusparseStatus_t status1, status2, status3;
-
-	/* initialize cublas */
-	if (cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS) {
-		fprintf(stderr, "!!!! CUBLAS initialization error\n");
-		return EXIT_FAILURE;
-	}
-	/* initialize cusparse */
-	status1 = cusparseCreate(&cusparseHandle);
-	if (status1 != CUSPARSE_STATUS_SUCCESS) {
-		fprintf(stderr, "!!!! CUSPARSE initialization error\n");
-		return EXIT_FAILURE;
-	}
-	/* create three matrix descriptors */
-	status1 = cusparseCreateMatDescr(&descra);
-	status2 = cusparseCreateMatDescr(&descrm);
-	if ((status1 != CUSPARSE_STATUS_SUCCESS) ||
-		(status2 != CUSPARSE_STATUS_SUCCESS)) {
-		fprintf(stderr, "!!!! CUSPARSE cusparseCreateMatDescr (coefficient matrix or preconditioner) error\n");
-		return EXIT_FAILURE;
-	}
-	int maxit = 2000; //5; //2000; //1000;  //50; //5; //50; //100; //500; //10000;
-	double tol = 0.0000001; //0.000001; //0.00001; //0.00000001; //0.0001; //0.001; //0.00000001; //0.1; //0.001; //0.00000001;
-	int *A_RowIndices = new int[ (Nrows + 1) * sizeof(*d_A_RowIndices)];
 
 	if (codeOpt == "gpu")
 	{
-
-		/* allocate device memory for csr matrix and vectors */
-		checkCudaErrors(cudaMalloc((void**)&devPtrF, sizeof(devPtrF[0]) * arraySizeF));
-		checkCudaErrors(cudaMalloc((void**)&devPtrR, sizeof(devPtrR[0]) * arraySizeR));
-		checkCudaErrors(cudaMalloc((void**)&devPtrRW, sizeof(devPtrRW[0]) * arraySizeRW));
-		checkCudaErrors(cudaMalloc((void**)&devPtrPW, sizeof(devPtrPW[0]) * arraySizePW));
-		checkCudaErrors(cudaMalloc((void**)&devPtrS, sizeof(devPtrS[0]) * arraySizeS));
-		checkCudaErrors(cudaMalloc((void**)&devPtrT, sizeof(devPtrT[0]) * arraySizeT));
-		checkCudaErrors(cudaMalloc((void**)&devPtrV, sizeof(devPtrV[0]) * arraySizeV));
-		/*checkCudaErrors(cudaMemcpy(A_RowIndices, d_A_RowIndices, (Nrows) * sizeof(int), cudaMemcpyDeviceToHost));
-		int mNNZ = A_RowIndices[matrixM + 1] - A_RowIndices[1];
-		int mSizeAval = mNNZ;*/
-		checkCudaErrors(cudaMalloc((void**)&devPtrMval, sizeof(devPtrMval[0]) * Nrows));
-		checkCudaErrors(cudaMemset((void*)devPtrMval, 0, sizeof(devPtrMval[0]) * Nrows));
-
-		//-------Allocating arrays in device memory-------
-		gpuErrchk(cudaMalloc(&d_A, nnz * sizeof(*d_A)));
-		gpuErrchk(cudaMalloc(&d_A_RowIndices, (Nrows + 1) * sizeof(*d_A_RowIndices)));
-		gpuErrchk(cudaMalloc(&d_A_ColIndices, nnz * sizeof(*d_A_ColIndices)));
-		gpuErrchk(cudaMalloc(&d_nnzPerVector, Nrows * sizeof(*d_nnzPerVector)));
-		/* clean memory */
-		checkCudaErrors(cudaMemset((void*)devPtrF, 0, sizeof(devPtrF[0]) * arraySizeF));
-		checkCudaErrors(cudaMemset((void*)devPtrR, 0, sizeof(devPtrR[0]) * arraySizeR));
-		checkCudaErrors(cudaMemset((void*)devPtrRW, 0, sizeof(devPtrRW[0]) * arraySizeRW));
-		checkCudaErrors(cudaMemset((void*)devPtrPW, 0, sizeof(devPtrPW[0]) * arraySizePW));
-		checkCudaErrors(cudaMemset((void*)devPtrS, 0, sizeof(devPtrS[0]) * arraySizeS));
-		checkCudaErrors(cudaMemset((void*)devPtrT, 0, sizeof(devPtrT[0]) * arraySizeT));
-		checkCudaErrors(cudaMemset((void*)devPtrV, 0, sizeof(devPtrV[0]) * arraySizeV));
-
-		
-
 		cudaMalloc((void**)& d_MAX, (1) * sizeof(double));
 
 		cudaMalloc((void**)& d_DT, (1) * sizeof(double));
@@ -1370,8 +986,8 @@ int main(int argc,													//		   Number of strings in array argv
 
 	if (codeOpt != "gpu")
 	{
-		//NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
-		neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
+		NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
+		//neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
 	}
 	else
 	{
@@ -1404,8 +1020,11 @@ int main(int argc,													//		   Number of strings in array argv
 	cout << "\n";
 	cout << "     ITERATION STARTED  (each bar represents 1 time step) \n";
 	t = 0;
+	int Tstep;
 
-	for (int Tstep = 1; t <= T; Tstep++)
+	
+	
+	for (Tstep = 1; t <= T; Tstep++)
 	{
 		bool loopstarted = true;
 		DTcalculation(c0, c01, c02, DT, DT_MAX, COURANT, DL);
@@ -1432,8 +1051,9 @@ int main(int argc,													//		   Number of strings in array argv
 		{
 			if (codeOpt != "gpu")
 			{
-				//NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
-				neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
+				NEIGHBOR(Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, re, DELTA, TP, x, y, z, neighb, DIM, codeOpt);
+				//neighbour_cuda_2d(TP, x, y, DELTA, re, neighb, Xmin, Xmax, Ymin, Ymax);
+
 			}
 			else
 			{
@@ -1542,11 +1162,6 @@ int main(int argc,													//		   Number of strings in array argv
 				cudaMemset(d_ic, 0, (NEIGHBORS + 1) * (TP + 1) * sizeof(double));
 				cudaMemset(d_source, 0, (TP + 1) * sizeof(double));
 
-				//cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
-				std::ofstream outneigh;
-				std::string filename = "outneigh_convert" + std::to_string(Tstep) + ".txt";
-				outneigh.open(filename, 'w');
-
 				if (division > 0) matrixCalc << <division, max_threads_per_block >> > (1, re, d_xstar, d_ystar, d_zstar, KTYPE, d_nstar, n0, Rho1, lambda, DT[0], DIM, d_neighb, d_poiss, d_bcon, matopt);
 				if (mod > 0) matrixCalc << <1, mod >> > ((division * max_threads_per_block) + 1, re, d_xstar, d_ystar, d_zstar, KTYPE, d_nstar, n0, Rho1, lambda, DT[0], DIM, d_neighb, d_poiss, d_bcon, matopt);
 
@@ -1555,147 +1170,26 @@ int main(int argc,													//		   Number of strings in array argv
 
 				if (division > 0) incdecom << <division, max_threads_per_block >> > (1, TP, d_bcon, d_neighb, d_poiss, d_ic);
 				if (mod > 0) incdecom << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_neighb, d_poiss, d_ic);
-				cudaDeviceSynchronize();
-				cudaError_t error = cudaGetLastError();
-
-				//*********************************************************************************************************************************************************************************************************************
-
-				//cusparseSafeCall(cusparseDnnz(handle, CUSPARSE_DIRECTION_ROW, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, &nnz));
-				//cusparseSafeCall(cusparseDdense2csr(handle, Nrows, Ncols, descrA, d_poiss, lda, d_nnzPerVector, d_A, d_A_RowIndices, d_A_ColIndices));
-				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_l));
-				//checkCudaErrors(cusparseCreateSolveAnalysisInfo(&info_u));
-
-				//int matrixSizeAval = nnz;
-				///* analyse the lower and upper triangular factors */
-				//double ttl = second();
-				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_LOWER));
-				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_UNIT));
-				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_l));
-				//checkCudaErrors(cudaDeviceSynchronize());
-				//double ttl2 = second();
-
-				//double ttu = second();
-				//checkCudaErrors(cusparseSetMatFillMode(descrm, CUSPARSE_FILL_MODE_UPPER));
-				//checkCudaErrors(cusparseSetMatDiagType(descrm, CUSPARSE_DIAG_TYPE_NON_UNIT));
-				//checkCudaErrors(cusparseDcsrsv_analysis(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, nnz, descrm, d_A, d_A_RowIndices, d_A_ColIndices, info_u));
-				//checkCudaErrors(cudaDeviceSynchronize());
-				//double ttu2 = second();
-				//ttt_sv += (ttl2 - ttl) + (ttu2 - ttu);
-				//printf("analysis lower %f (s), upper %f (s) \n", ttl2 - ttl, ttu2 - ttu);
-
-				//checkCudaErrors(cudaMemcpy(devPtrMval, d_A, (size_t)(matrixSizeAval * sizeof(devPtrMval[0])), cudaMemcpyDeviceToDevice));
-				///* compute the lower and upper triangular factors using CUSPARSE csrilu0 routine (on the GPU) */
-				//double start_ilu, stop_ilu;
-				//printf("CUSPARSE csrilu0 ");
-				//start_ilu = second();
-				//devPtrMrowsIndex = d_A_RowIndices;
-				//devPtrMcolsIndex = d_A_ColIndices;
-
-				//checkCudaErrors(cusparseDcsrilu0(cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, matrixM, descra, devPtrMval, d_A_RowIndices, d_A_ColIndices, info_l));
-				//checkCudaErrors(cudaDeviceSynchronize());
-				//stop_ilu = second();
-				//fprintf(stdout, "time(s) = %10.8f \n", stop_ilu - start_ilu);
-
-				///* run the test */
-				//int num_iterations = 1; //10; 
-				//for (int count = 0; count < num_iterations; count++) {
-
-				//	gpu_pbicgstab(cublasHandle, cusparseHandle, matrixM, matrixN, nnz,
-				//		descra, d_A, d_A_RowIndices, d_A_ColIndices,
-				//		descrm, devPtrMval, devPtrMrowsIndex, devPtrMcolsIndex,
-				//		info_l, info_u,
-				//		devPtrF, devPtrR, devPtrRW, d_source, devPtrPW, devPtrS, devPtrT, devPtrV, d_pnew, maxit, tol, ttt_sv);
-
-				//}
-
-				///* destroy the analysis info (for lower and upper triangular factors) */
-				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_l));
-				//checkCudaErrors(cusparseDestroySolveAnalysisInfo(info_u));
-
-
-				//*********************************************************************************************************************************************************************************************************************
-
-				//to host: bcon, neighb, poiss, source, ic
-
-				//cudaMemcpy(h_neighb, d_neighb, (NEIGHBORS + 1)* (TP+1) * sizeof(int), cudaMemcpyDeviceToHost);
-
-				//for (int j = 1; j <= TP; j++) {
-				//	for (int i = 0; i <= h_neighb[j * (NEIGHBORS)+1]; i++) {
-				//		neighb[j][i + 2] = h_neighb[j * (NEIGHBORS)+i + 2];
-				//	}
-				//	neighb[j][1] = h_neighb[j * (NEIGHBORS) + 1];
-				//}
-
-				//cudaMemcpy(h_poiss, d_poiss, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-
-				//for (int j = 1; j <= TP; j++) {
-				//	for (int i = 0; i < NEIGHBORS; i++) {
-				//		poiss[j][i + 1] = h_poiss[j * (NEIGHBORS)+i + 1];
-				//	}
-				//	//poiss[j][1] = h_poiss[j * (NEIGHBORS)+1];
-				//}
-
-
-				//cudaMemcpy(h_ic, d_ic, (NEIGHBORS + 1)* (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-
-				//for (int j = 1; j <= TP; j++) {
-				//	for (int i = 0; i < NEIGHBORS; i++) {
-				//		ic[j][i + 1] = h_ic[j * (NEIGHBORS)+i + 1];
-				//	}
-				//	//ic[j + 1][1] = h_ic[j * (NEIGHBORS)+1];
-				//}
-
-
-				////for (int j = 1; j <= TP; j++) {
-				////	for (int i = 0; i < NEIGHBORS; i++) {
-				////		outneigh << poiss[j][i+1] << " ";
-				////	}
-				////	outneigh << std::endl;
-				////}
-
-				////outneigh.close();
-				//cudaMemcpy(bcon, d_bcon, (TP + 1) * sizeof(int), cudaMemcpyDeviceToHost);
-				//cudaMemcpy(source, d_source, (TP + 1) * sizeof(double), cudaMemcpyDeviceToHost);
-				//cudaMemset(d_pnew, 0, (TP + 1) * sizeof(double));
-				//cudaDeviceSynchronize();
-
-				//CGM(TP, source, IterMax, MAXresi, poiss, neighb, bcon, pnew, imax, ic, DT[0], eps, imin, codeOpt);
-
-
-				//for (int I = 1; I <= TP; I++)
-				//{
-				//	if (pnew[I] < PMIN)
-				//	{
-				//		pnew[I] = PMIN;
-				//	}
-				//	if (pnew[I] > PMAX || pnew[I] * 0.0 != 0.0)
-				//	{
-				//		if (pnew[I] * 0.0 != 0.0) cout << "pressao dando infinito...\n";
-				//		pnew[I] = PMAX;
-				//	}
-
-				//}
-
-				////to device: pnew
-				//cudaMemcpy(d_pnew, pnew, sizeof(double) * (TP + 1), cudaMemcpyHostToDevice);
-
-				
+							
 				if (division > 0) cgm1 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 				if (mod > 0) cgm1 << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_pnew);
 
 				if (division > 0) cgm2 << <division, max_threads_per_block >> > (1, d_r1, d_source, d_s1);
 				if (mod > 0) cgm2 << <1, mod >> > ((division * max_threads_per_block) + 1, d_r1, d_source, d_s1);
+				//cudaDeviceSynchronize();
 
 				cudaMemcpy(d_aux, d_r1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
 				if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 				if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
+				//cudaDeviceSynchronize();
 
 				cudaMemcpy(d_aux, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
 				if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 				if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
-
+				//cudaDeviceSynchronize();
+				
 				cudaMemcpy(d_p1, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 				cudaMemset(d_rqo, 0, sizeof(float));
 
@@ -1707,6 +1201,7 @@ int main(int argc,													//		   Number of strings in array argv
 
 					if (division > 0) cgm6 << <division, max_threads_per_block >> > (1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_p1);
 					if (mod > 0) cgm6 << <1, mod >> > ((division * max_threads_per_block) + 1, TP, d_bcon, d_s1, d_neighb, d_poiss, d_p1);
+					//cudaDeviceSynchronize();
 
 					cudaMemset(d_ps, 0, sizeof(float));
 
@@ -1720,33 +1215,39 @@ int main(int argc,													//		   Number of strings in array argv
 
 					if (division > 0) cgm9 << <division, max_threads_per_block >> > (1, d_r1, d_s1, d_aa);
 					if (mod > 0) cgm9 << <1, mod >> > ((division * max_threads_per_block) + 1, d_r1, d_s1, d_aa);
+					//cudaDeviceSynchronize();
 
 					cudaMemcpy(d_aux, d_r1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
 					if (division > 0) cgmFS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 					if (mod > 0) cgmFS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
-					
+					//cudaDeviceSynchronize();
+
 					cudaMemcpy(d_aux, d_q1, sizeof(double) * (TP + 1), cudaMemcpyDeviceToDevice);
 
 					if (division > 0) cgmBS << <division, max_threads_per_block >> > (1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
 					if (mod > 0) cgmBS << <1, mod >> > ((division * max_threads_per_block) + 1, d_ic, d_q1, d_aux, d_bcon, d_neighb, TP);
-					
+					//cudaDeviceSynchronize();
+
 					cudaMemset(d_rqn, 0, sizeof(float));
 
 					if (division > 0) cgm10 << <division, max_threads_per_block >> > (1, d_r1, d_q1, d_bcon, d_rqn);
 					if (mod > 0) cgm10 << <1, mod >> > ((division * max_threads_per_block) + 1, d_r1, d_q1, d_bcon, d_rqn);
 
 					bbKernel << <1, 1 >> > (d_bb, d_rqn, d_rqo);
+					//cudaDeviceSynchronize();
 
 					cudaMemcpy(d_rqo, d_rqn, sizeof(float), cudaMemcpyDeviceToDevice);
 
 					if (division > 0) cgm11 << <division, max_threads_per_block >> > (1, d_p1, d_q1, d_bb);
 					if (mod > 0) cgm11 << <1, mod >> > ((division * max_threads_per_block) + 1, d_p1, d_q1, d_bb);
+					//cudaDeviceSynchronize();
 
 					cudaMemset(d_j, 0, sizeof(int));
 
 					if (division > 0)  cgm12 << <division, max_threads_per_block >> > (1, d_r1, d_bcon, d_err1, d_j, eps, DT[0]);
 					if (mod > 0)  cgm12 << <1, mod >> > ((division * max_threads_per_block) + 1, d_r1, d_bcon, d_err1, d_j, eps, DT[0]);
+					//cudaDeviceSynchronize();
 
 					cudaMemcpy(j, d_j, 1*sizeof(int), cudaMemcpyDeviceToHost);
 
@@ -1837,8 +1338,8 @@ int main(int argc,													//		   Number of strings in array argv
 
 		//------------------------------------------ Printing results --------------------------------------------------------
 
-		if (outAll)
-			saveParticles(TP, Tstep, x, y, /*z,*/ u, v, /*w,*/ p, PTYPE, DIM);
+		if (outAll && Tstep%noOfStepsToPrint == 0)
+			saveParticles(TP, Tstep, x, y, z, u, v, w, p, PTYPE, DIM);
 
 
 		if (outFluid)
@@ -1858,11 +1359,19 @@ int main(int argc,													//		   Number of strings in array argv
 			cout << "                          OR " << T / DT[0] * duration.count() / 3600000.0 << " hours (Total running time)\n" << endl;
 			cout << "                          OR " << duration.count() << " msec (per time step)\n" << endl;
 		}
-		cout << "|";
+		cout << ">" << DT[0];
 	}
-	// --------------------------------End of Time Loop --------------------------------------------------
 
-	cout << "End!\n";
+	// --------------------------------End of Time Loop --------------------------------------------------
+	cout << endl << endl;
+	auto stop_final = chrono::high_resolution_clock::now();
+	auto duration_final = chrono::duration_cast<chrono::milliseconds>(stop_final - start1);
+	cout << "     Total running time: " << duration_final.count() << " milliseconds \n" << endl;
+	cout << "     Total time steps: " << Tstep-1 << " \n" << endl;
+	cout << "     Average FPS: " << (Tstep - 1) / (duration_final.count()/1000.0) << " (Frames Per Second)\n" << endl;
+
+
+	cout << "The end!\n";
 	return 0;
 }
 

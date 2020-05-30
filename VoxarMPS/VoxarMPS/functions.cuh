@@ -29,14 +29,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <algorithm>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-//#include "cusparse.h"
-//#include "cusparse_v2.h"
 #include "inOut.h"
-#include "cublas_v2.h"
-#include "cusolverSp.h"
 #include "neighbour_parallel.h"
-#include "helper_cuda.h"
-#include "helper_cusolver.h"
+
 
 
 #include <stdlib.h>

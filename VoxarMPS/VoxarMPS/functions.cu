@@ -22,9 +22,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "functions.cuh"
 #include <map>
-#include <tuple>
-#include <vector>
-#include <algorithm>
 using namespace std;
 
 
@@ -37,37 +34,37 @@ double W(double R, int KTYPE, int dim, double re)
 	double w;
 	double q = R / re;
 	switch (KTYPE) {
-		case 1: 											//		   Second order polynomial function (Koshizuka and Oka, 1996)
-			if (q < 0.5) w = 2.0 - 4.0 * pow(q, 2);
-			else if (q <= 1.0) w = (2 * q - 2) * (2 * q - 2);
-			else w = 0;
-			break;
+	case 1: 											//		   Second order polynomial function (Koshizuka and Oka, 1996)
+		if (q < 0.5) w = 2.0 - 4.0 * pow(q, 2);
+		else if (q <= 1.0) w = (2 * q - 2) * (2 * q - 2);
+		else w = 0;
+		break;
 
-		case 2:												//		   Rational function (Koshizuka et al., 1998)
-			if (q < 1.0) w = (1 / q) - 1;
-			else w = 0;
-			break;
+	case 2:												//		   Rational function (Koshizuka et al., 1998)
+		if (q < 1.0) w = (1 / q) - 1;
+		else w = 0;
+		break;
 
-		case 3:												//		   Cubic spline function
-			double C;
-			if (dim == 1) C = 0.6666;
-			if (dim == 2) C = 1.43 * 3.14;
-			if (dim == 3) C = 1 / 3.14;
+	case 3:												//		   Cubic spline function
+		double C;
+		if (dim == 1) C = 0.6666;
+		if (dim == 2) C = 1.43 * 3.14;
+		if (dim == 3) C = 1 / 3.14;
 
-			if (R < re) w = C / pow(re, dim) * (1 - 1.5 * pow(q, 2.0) + 0.75 * pow(q, 3.0));
-			else if (R >= re && R < (2.0 * re)) w = C / pow(re, dim) * (0.25 * pow(2.0 - q, 3.0));
-			else w = 0;
-			break;
+		if (R < re) w = C / pow(re, dim) * (1 - 1.5 * pow(q, 2.0) + 0.75 * pow(q, 3.0));
+		else if (R >= re && R < (2.0 * re)) w = C / pow(re, dim) * (0.25 * pow(2.0 - q, 3.0));
+		else w = 0;
+		break;
 
-		case 5:												//		   Cubic spline function
-			if (q <= 1.0) w = 1.5 * log(1 / (q + 0.000001));
-			else w = 0;
-			break;
+	case 5:												//		   Cubic spline function
+		if (q <= 1.0) w = 1.5 * log(1 / (q + 0.000001));
+		else w = 0;
+		break;
 
-		case 6:												//		   3rd order polynomial function (Shakibaeinia and Jin, 2010)
-			if (q <= 1.0) w = pow((1 - q), 3);
-			else w = 0;
-			break;
+	case 6:												//		   3rd order polynomial function (Shakibaeinia and Jin, 2010)
+		if (q <= 1.0) w = pow((1 - q), 3);
+		else w = 0;
+		break;
 	}
 	return (w);
 }
@@ -97,10 +94,9 @@ double dist3d(int i, int j, double* x, double* y, double* z)
 double* PNUM(int i, int ktype, int dim, int TP, double re, int** neighb, double* x, double* y, double* z, double Ncorrection, double* n, double* MAX, double* pnew, double* p, bool loopstarted, string codeOpt)
 {
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		double sum = 0.0;
@@ -160,10 +156,9 @@ __global__ void pnum(int offset, int ktype, int dim, int TP, double re, int* nei
 //=================================================================================================
 double* PNUMSTAR(int ktype, int dim, int TP, double re, int** neighb, double* xstar, double* ystar, double* zstar, double* nstar, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		double sum = 0.0;
@@ -211,10 +206,9 @@ __global__ void pnumstar(int offset, int KTYPE, int DIM, int TP, double re, int*
 //=================================================================================================
 double* PHATCALC(int TP, int** neighb, double* pnew, double* phat, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		double min = 999999999999999;
@@ -249,12 +243,11 @@ __global__ void phatCalc(int offset, int TP, int* neighb, double* pnew, double* 
 //===========================     Pressure gradient Calc.  ========================================
 //=================================================================================================
 void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** neighb, double* xstar, double* ystar, double* zstar, double* phat, int KTYPE, double re, double* RHO, double* ustar, double* vstar, double* wstar, double DT,
-	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt, double *nstar)
+	double* unew, double* vnew, double* wnew, double relaxp, double n0, double VMAX, int dim, string codeOpt, double* nstar)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = GP + WP + 1; I <= TP; I++)
 	{
 
@@ -266,8 +259,7 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 		double summat2 = 0;
 		double summat3 = 0;
 		double vij = 1.0 / nstar[I];
-		//if (KHcorrection == 1)
-		if (true)
+		if (KHcorrection == 1)
 		{
 			for (int l = 2; l <= neighb[I][1]; l++)
 			{
@@ -292,9 +284,15 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 				}
 			}
 		}
-		
+
 		double det = 1.0 / (summat1 * summat3 - summat2 * summat2);
+		summat1 = det * summat1;
+		summat2 = det * summat2;
+		summat3 = det * summat3;
 		if (KHcorrection == 2) {
+			sum1 = 0;
+			sum2 = 0;
+			sum3 = 0;
 			for (int l = 2; l <= neighb[I][1]; l++)
 			{
 				int J = neighb[I][l];
@@ -306,8 +304,8 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 
 				if (I != J)
 				{
-					sum1 = sum1 + (pnew[J] - pnew[I]) / D / D * diff(I, J, xstar) * W(D, KTYPE, dim, re);
-					sum2 = sum2 + (pnew[J] - pnew[I]) / D / D * diff(I, J, ystar) * W(D, KTYPE, dim, re) ;
+					sum1 = sum1 + (pnew[J] - pnew[I]) / D / D * (diff(I, J, xstar) * summat1 + diff(I, J, ystar) * summat2) * W(D, KTYPE, dim, re);
+					sum2 = sum2 + (pnew[J] - pnew[I]) / D / D * (diff(I, J, xstar) * summat2 + diff(I, J, ystar) * summat3) * W(D, KTYPE, dim, re);
 					if (dim == 3)
 						sum3 = sum3 + (pnew[J] - pnew[I]) / D / D * diff(I, J, zstar) * W(D, KTYPE, dim, re);
 
@@ -315,7 +313,7 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 				}
 			}
 		}
-		else if(KHcorrection == 0)
+		else if (KHcorrection == 0)
 		{
 			for (int l = 2; l <= neighb[I][1]; l++)
 			{
@@ -345,12 +343,12 @@ void PRESSGRAD(int GP, int WP, int KHcorrection, int TP, double* pnew, int** nei
 			wnew[I] = wstar[I] - relaxp * (2.0 * DT / n0 / Rho) * sum3;
 
 		//----------- Damper ----------------------------				
-
-		if (fabs(unew[I]) > 2.0 * VMAX) unew[I] = VMAX;
-		if (vnew[I] > 2.0 * VMAX) vnew[I] = 2.0 * VMAX;
-		if (vnew[I] < -2.0 * VMAX) vnew[I] = -2.0 * VMAX;
+		double coeff = 2.0;
+		if (fabs(unew[I]) > coeff * VMAX) unew[I] = VMAX;
+		if (vnew[I] > coeff * VMAX) vnew[I] = coeff * VMAX;
+		if (vnew[I] < -coeff * VMAX) vnew[I] = -coeff * VMAX;
 		if (dim == 3)
-			if (fabs(wnew[I]) > 2.0 * VMAX) wnew[I] = VMAX;
+			if (fabs(wnew[I]) > coeff * VMAX) wnew[I] = VMAX;
 		//------------------------------------------------
 
 	}
@@ -434,10 +432,9 @@ __global__ void pressGrad(int offset, int GP, int WP, int KHcorrection, int TP, 
 //===========================================================================================
 int* BCON(int* PTYPE, int* bcon, double* n, double n0, double dirichlet, int TP, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (PTYPE[i] <= -1) bcon[i] = -1;
@@ -465,10 +462,9 @@ int* CHECKBCON(int* check, int* bcon, int** neigh, int TP, string codeOpt)
 {
 	int /*i, j, l,*/ count;
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (bcon[i] == -1) check[i] = -1;
@@ -515,10 +511,9 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 	double* s = new double[(TP + 1)]();
 	double* aux = new double[(TP + 1)]();
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (bcon[i] != 0) continue;
@@ -531,19 +526,13 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 		}
 	}
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	//#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)r[i] = b[i] - s[i];
 
 	memcpy(aux, r, sizeof(double) * (TP + 1));
 
 	/*  forward substitution */
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (bcon[i] != 0) { continue; }
@@ -560,9 +549,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 	memcpy(aux, q, sizeof(double) * (TP + 1));
 
 	/*  backward substitution */
-	if (codeOpt == "openmp") {
-#pragma omp parallel for schedule (guided)
-	}
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = TP; i >= 1; i--)
 	{
 		if (bcon[i] != 0) { continue; }
@@ -578,10 +565,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 
 	memcpy(p, q, sizeof(double) * (TP + 1));
 	double rqo = 0.0;
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (bcon[i] == 0)
@@ -592,10 +576,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 
 	for (int k = 0; k < imax; k++)
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (bcon[i] != 0) continue;
@@ -610,10 +591,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 
 		double ps = 0.0;
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (bcon[i] == 0)
@@ -624,19 +602,13 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 
 		double aa = rqo / ps;
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			x[i] = x[i] + aa * p[i];
 		}
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)r[i] = r[i] - aa * s[i];
 
 		//--------------------------------------------------
@@ -644,10 +616,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 		memcpy(aux, r, sizeof(double) * (TP + 1));
 
 		/*  forward substitution */
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (bcon[i] != 0) continue;
@@ -664,10 +633,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 		memcpy(aux, q, sizeof(double) * (TP + 1));
 
 		/*  backward substitution */
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = TP; i >= 1; i--)
 		{
 			if (bcon[i] != 0) continue;
@@ -682,10 +648,7 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 		}
 
 		double rqn = 0.0;
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (bcon[i] == 0)
@@ -697,17 +660,11 @@ void CGM(int TP, double* b, int IterMax, double MAXresi, double** poiss, int** n
 		double bb = rqn / rqo;
 		rqo = rqn;
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)p[i] = q[i] + bb * p[i];
 
 		int j = 0;
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (bcon[i] != 0) continue;
@@ -797,20 +754,6 @@ __global__ void cgmFS(int offset, double* ic, double* q, double* aux, int* bcon,
 		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
 	}
 
-	//for (int i = 1; i <= TP; i++)
-	//{
-	//	if (bcon[i] == 0)
-	//	{
-	//		for (int l = 2; l <= neigh[i * NEIGHBORS + 1]; l++)
-	//		{
-	//			int j = neigh[i * NEIGHBORS + l];
-	//			if (j > i) continue;
-	//			if (bcon[j] != 0) continue;
-	//			aux[i] = aux[i] - ic[i * NEIGHBORS + l] * q[j];
-	//		}
-	//		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
-	//	}
-	//}
 }
 
 __global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon, int* neigh, int TP)
@@ -829,20 +772,6 @@ __global__ void cgmBS(int offset, double* ic, double* q, double* aux, int* bcon,
 		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
 	}
 
-	//for (int i = TP; i >= 1; i--)
-	//{
-	//	if (bcon[i] == 0)
-	//	{
-	//		for (int l = 2; l <= neigh[i * NEIGHBORS + 1]; l++)
-	//		{
-	//			int j = neigh[i * NEIGHBORS + l];
-	//			if (j < i)continue;
-	//			if (bcon[j] != 0)continue;
-	//			aux[i] = aux[i] - ic[i * NEIGHBORS + l] * q[j];
-	//		}
-	//		q[i] = aux[i] / ic[i * NEIGHBORS + 1];
-	//	}
-	//}
 }
 
 __global__ void cgm5(int offset, double* r, double* q, int* bcon, float* rqo)
@@ -943,10 +872,9 @@ void MATRIX(double re, int Method, int FP, int WP, int TP, double* x, double* y,
 {
 	if (Method == 1)
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			double val = 1.0;
@@ -999,10 +927,9 @@ void MATRIX(double re, int Method, int FP, int WP, int TP, double* x, double* y,
 
 		if (srcopt)
 		{
-			if (codeOpt == "openmp")
-			{
-#pragma omp parallel for schedule (guided)
-			}
+			int min_val = 0;
+			if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 			for (int i = 1; i <= TP; i++)
 			{
 				if (PTYPE[i] == -1) continue;
@@ -1061,10 +988,9 @@ void MATRIX(double re, int Method, int FP, int WP, int TP, double* x, double* y,
 		}
 		else
 		{
-			if (codeOpt == "openmp")
-			{
-#pragma omp parallel for schedule (guided)
-			}
+			int min_val = 0;
+			if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 			for (int i = 1; i <= TP; i++)
 			{
 				if (PTYPE[i] == -1) continue;
@@ -1212,10 +1138,9 @@ __global__ void sourceCalc(int offset, int TP, int* PTYPE, int* bcon, double* ns
 //================================================================================================
 double** INCDECOM(int TP, int* bcon, int** neigh, double** poiss, double** ic, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		if (bcon[i] != 0) continue;
@@ -1340,10 +1265,9 @@ __global__ void incdecom(int offset, int TP, int* bcon, int* neigh, double* pois
 
 void BC(int slip, int TP, int GP, int WP, int* PTYPE, int I, int** neighb, double* x, double* y, double DL, double* v, double* vstar, double* vnew, double* u, double* ustar, double* unew, double* p, double* pnew, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= GP + WP; I++)
 	{
 		double MINIMUM = 100;
@@ -1598,10 +1522,9 @@ __global__ void bc(int offset, int slip, int TP, int GP, int WP, int* PTYPE, int
 //===========================================================================================
 void COLLISION2(int TP, double MINdistance, int* PTYPE, double Rho1, double Rho2, int** neighb, double CC, double* unew, double* vnew, double* wnew, double* x, double* y, double* z, double DT, int dim, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = 1; i <= TP; i++)
 	{
 		double cc;
@@ -1808,10 +1731,9 @@ void SPS(double re, int TP, int GP, int** neighb, double* x, double* y, double* 
 		S33 = new double[TP + 1];
 	}
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = GP + 1; i <= TP; i++)
 	{
 		double Uxx, Uxy, Uyx, Uyy, Uzz, Uxz, Uyz, Uzx, Uzy, S, d, w;
@@ -1873,10 +1795,7 @@ void SPS(double re, int TP, int GP, int** neighb, double* x, double* y, double* 
 
 	}
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+#pragma omp parallel for schedule(static, min_val) 
 	for (int i = GP + 1; i <= TP; i++)
 	{
 		double sum1 = 0, sum2 = 0, sum3 = 0, d, w;
@@ -1900,13 +1819,13 @@ void SPS(double re, int TP, int GP, int** neighb, double* x, double* y, double* 
 		}
 		if (dim == 3)
 		{
-			TURB1[i] = (2.0 / n0) * (2 * S11[i] * sum1 + 2 * S12[i] * sum2 + 2 * S13[i] * sum3);       
+			TURB1[i] = (2.0 / n0) * (2 * S11[i] * sum1 + 2 * S12[i] * sum2 + 2 * S13[i] * sum3);
 			TURB2[i] = (2.0 / n0) * (2 * S12[i] * sum1 + 2 * S22[i] * sum2 + 2 * S23[i] * sum3);
 			TURB3[i] = (2.0 / n0) * (2 * S13[i] * sum1 + 2 * S23[i] * sum2 + 2 * S33[i] * sum3);
 		}
 		else
 		{
-			TURB1[i] = (2.0 / n0) * (2 * S11[i] * sum1 + 2 * S12[i] * sum2);       
+			TURB1[i] = (2.0 / n0) * (2 * S11[i] * sum1 + 2 * S12[i] * sum2);
 			TURB2[i] = (2.0 / n0) * (2 * S12[i] * sum1 + 2 * S22[i] * sum2);
 		}
 	}
@@ -2086,10 +2005,9 @@ void EULERINTEGRATION(int GP, int WP, int TP, double DT, double* x, double* y, d
 	double Zmax, double Zmin, int I, double CC, int dim, string test, string codeOpt)
 {
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = GP + WP + 1; I <= TP; I++)
 	{
 		x[I] = x[I] + unew[I] * DT;
@@ -2098,7 +2016,7 @@ void EULERINTEGRATION(int GP, int WP, int TP, double DT, double* x, double* y, d
 			z[I] = z[I] + wnew[I] * DT;
 
 		if (test != "drop")
-			BOUNDARIE(x, y, z, unew, vnew, wnew, DL, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, I, CC, dim, test);                       
+			BOUNDARIE(x, y, z, unew, vnew, wnew, DL, Xmax, Xmin, Ymax, Ymin, Zmax, Zmin, I, CC, dim, test);
 	}
 }
 
@@ -2154,10 +2072,9 @@ double* VISCOSITY(double re, int TP, int Fluid2_type, int* PTYPE, double* MEU, d
 	//--------------  Newtonian visc ---------------------
 	if (Fluid2_type == 0)
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 
@@ -2169,10 +2086,9 @@ double* VISCOSITY(double re, int TP, int Fluid2_type, int* PTYPE, double* MEU, d
 	//--------------------- Herschel-Bulkley Fluid  -------------------------
 	if (Fluid2_type == 1)
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int i = 1; i <= TP; i++)
 		{
 			if (PTYPE[i] == 1)MEU[i] = NEU1 * Rho1;
@@ -2351,7 +2267,7 @@ __global__ void viscosity(int offset, double re, int TP, int Fluid2_type, int* P
 			else
 				II = fabs(S11[i] * S22[i] - S12[i] * S12[i]);
 
-			MEU[i] = yield_stress / 2 / sqrt(II) + MEU0 * pow(4 * II, (N - 1) / 2); 
+			MEU[i] = yield_stress / 2 / sqrt(II) + MEU0 * pow(4 * II, (N - 1) / 2);
 
 			if (II == 0 || MEU[i] > 200) MEU[i] = 200;
 
@@ -2368,10 +2284,9 @@ void PREDICTION(double re, double* xstar, double* ystar, double* zstar, double* 
 	double Rho1, double Rho2, int** neighb, double* x, double* y, double* z, int KTYPE, double n0, double* phat, double* pnew, double gx, double gy, double gz, double DT, double* NEUt, double lambda,
 	double* TURB1, double* TURB2, double* TURB3, double relaxp, double* RHO, double* SFX, double* SFY, int dim, string codeOpt)
 {
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		if (PTYPE[I] <= 0)
@@ -2555,10 +2470,9 @@ void PRESSURECALC(int Method, int GP, int FP, int WP, int TP, int* PTYPE, double
 
 	if (Method == 3)
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int I = GP + 1; I <= TP; I++)
 		{
 			if (PTYPE[I] == 2)c0 = c02;
@@ -2587,10 +2501,9 @@ void PRESSURECALC(int Method, int GP, int FP, int WP, int TP, int* PTYPE, double
 	else
 	{
 		memset(pnew, 0, sizeof(double) * (TP + 1));
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int a = 1; a <= TP; a++)
 		{
 			memset(ic[a], 0, sizeof(double) * (NEIGHBORS + 1));
@@ -2618,10 +2531,7 @@ void PRESSURECALC(int Method, int GP, int FP, int WP, int TP, int* PTYPE, double
 
 		CGM(TP, source, IterMax, MAXresi, poiss, neigh, bcon, pnew, imax, ic, DT, eps, imin, codeOpt);
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+#pragma omp parallel for schedule(static, min_val) 
 		for (int I = 1; I <= TP; I++)
 		{
 			if (pnew[I] < PMIN)
@@ -2654,7 +2564,7 @@ __global__ void pressureCalcWC(int offset, int* PTYPE, double c0, double c01, do
 	}
 	else
 	{
-		pnew[I] = (c0 * c0 * Rho / 7.0) * (pow(nstar[I] / n0, 7.0) - 1);    
+		pnew[I] = (c0 * c0 * Rho / 7.0) * (pow(nstar[I] / n0, 7.0) - 1);
 	}
 
 	if (pnew[I] < PMIN) pnew[I] = PMIN;
@@ -2671,10 +2581,9 @@ double* V_FRACTION(double re, int Fraction_method, int TP, int** neighb, int* PT
 {
 	if (Fraction_method == 1)   //Linear distribution
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int I = 1; I <= TP; I++)
 		{
 			double sum1 = 0;
@@ -2698,10 +2607,9 @@ double* V_FRACTION(double re, int Fraction_method, int TP, int** neighb, int* PT
 
 	if (Fraction_method == 2)   //Non linear :  Smoothed using the weight funtion
 	{
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int I = 1; I <= TP; I++)
 		{
 			double sum1 = 0;
@@ -2751,7 +2659,7 @@ __global__ void volFraction(int offset, double re, int Fraction_method, int TP, 
 		if (sum1 == 0)C[I] = 0;
 	}
 
-	if (Fraction_method == 2)  
+	if (Fraction_method == 2)
 	{
 		double sum1 = 0;
 		double sum2 = 0;
@@ -2780,10 +2688,9 @@ __global__ void volFraction(int offset, double re, int Fraction_method, int TP, 
 void PREPDATA(int TP, int FP, double* x, double* y, double* z, double* u, double* v, double* w, double* p, double* unew, double* vnew, double* wnew, double* pnew, double Xmin, double Ymin, double Xmax, double Ymax, double Zmin, double Zmax, int dim, string test, string codeOpt)
 {
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		p[I] = pnew[I];
@@ -2901,10 +2808,9 @@ int** NEIGHBOR(double Xmax, double Xmin, double Ymax, double Ymin, double Zmax, 
 	Iend = new int[tnc + 1];
 	ip = new int[TP + 1];
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+	int min_val = 0;
+	if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 	for (int k = 1; k <= tnc; k++)
 	{
 		Ista[k] = 1;
@@ -2945,10 +2851,7 @@ int** NEIGHBOR(double Xmax, double Xmin, double Ymax, double Ymin, double Zmax, 
 		ip[Iend[Cnum]] = k;
 	}
 
-	if (codeOpt == "openmp")
-	{
-#pragma omp parallel for schedule (guided)
-	}
+#pragma omp parallel for schedule(static, min_val) 
 	for (int I = 1; I <= TP; I++)
 	{
 		int icell = int((x[I] - Xmin) / (re)) + 1;
@@ -3051,9 +2954,9 @@ void neighbor2gpu(int TP, double Xmin, double Ymin, double Zmin, double Xmax, do
 		}
 		else
 		{
-			Cnum = icell + (jcell - 1) * ncx;       
+			Cnum = icell + (jcell - 1) * ncx;
 		}
-		Iend[Cnum]++;						        
+		Iend[Cnum]++;
 
 		for (int m = Iend[tnc]; m >= Iend[Cnum]; m--)
 		{
@@ -3063,10 +2966,9 @@ void neighbor2gpu(int TP, double Xmin, double Ymin, double Zmin, double Xmax, do
 			}
 		}
 
-		if (codeOpt == "openmp")
-		{
-#pragma omp parallel for schedule (guided)
-		}
+		int min_val = 0;
+		if (codeOpt == "openmp") min_val = 0; else min_val = 999999999;
+#pragma omp parallel for schedule(static, min_val) 
 		for (int m = Cnum + 1; m <= tnc; m++)
 		{
 			Ista[m]++;
@@ -3083,8 +2985,8 @@ __global__ void neighbor3(int offset, double Xmax, double Xmin, double Ymax, dou
 {
 	unsigned int I = offset + (blockDim.x * blockIdx.x + threadIdx.x);
 
-	int ncx = int((Xmax - Xmin) / re) + 1;     
-	int ncy = int((Ymax - Ymin) / re) + 1;    
+	int ncx = int((Xmax - Xmin) / re) + 1;
+	int ncy = int((Ymax - Ymin) / re) + 1;
 	int ncz;
 	if (dim == 3)
 	{

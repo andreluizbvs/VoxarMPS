@@ -59,7 +59,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std;
 
-void saveParticles(int TP, int Tstep, double* x, double* y, /*double* z,*/ double* unew, double* vnew, /*double* wnew,*/ double* pnew, int* PTYPE, int dim);
+void saveParticles(int TP, int Tstep, double* x, double* y, double* z, double* unew, double* vnew, double* wnew, double* pnew, int* PTYPE, int dim);
 
 void saveFluidParticles(int TP, int FP, int Tstep, double* x, double* y, double* z, double* unew, double* vnew, double* wnew, double* pnew, int* PTYPE, int dim);
 

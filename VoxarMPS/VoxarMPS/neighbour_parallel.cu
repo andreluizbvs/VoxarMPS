@@ -13,19 +13,6 @@
 #include "device_launch_parameters.h"
 
 
-//VS headers
-//still need to make x,y,z compatible with main
-//add tests
-
-//in mps the x array starts from 1 index
-//you have to caliberate everything according to that and test according to that. 
-//after that you run the code and time it
-//after that you run a dam break case 
-//after that you classify the code 
-
-int glob = 0;
-// 2d code
-
 // ----------------- CUDA KERNELS -------------------------
 
 __global__ void calcHash(double *d_x, double *d_y, int *d_particleHash, \
@@ -212,8 +199,6 @@ void neighbour_cuda_2d(int TP, double *x, double *y, double DELTA, double re, in
 
 	int MAX_NEIGHB = 300, THREADS_PER_BLOCK = 256;
 
-	//cout<<endl<<"Time study for neighbour_cuda_1()"<<endl;
-
 	// ------------------ variable declarations and initializations ------------------------------
 
 	int *d_cellEnd, *d_cellStart, *d_TP, *d_tnc, *tnc, *d_ncx, *d_ncy, *d_max_neighb;
@@ -312,20 +297,6 @@ void neighbour_cuda_2d(int TP, double *x, double *y, double DELTA, double re, in
 	}
 
 
-	//std::ofstream outneigh;
-	//std::string filename = "outneigh_cpu" + std::to_string(glob) + ".txt";
-	//glob++;
-	//outneigh.open(filename, 'w');
-
-	//for (int j = 1; j <= TP; j++) {
-	//	for (int i = 1; i <= neighb[j][1]; i++) {
-	//		outneigh << neighb[j][i] << " ";
-	//	}
-	//	outneigh << std::endl;
-	//}
-	//outneigh.close();
-
-
 	// -------------------------- Deallocating memory ---------------------------
 
 	cudaFree(d_particleHash);
@@ -355,17 +326,15 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 
 	int MAX_NEIGHB = 300, THREADS_PER_BLOCK = 256;
 
-	//cout<<endl<<"Time study for neighbour_cuda_1()"<<endl;
 
 	// ------------------ variable declarations and initializations ------------------------------
 
 	int *d_cellEnd, *d_cellStart, *d_TP, *d_tnc, *tnc, *d_ncx, *d_ncy, *d_max_neighb;
-	int *d_particleHash, *d_particleid, /**d_neighb,*/ /***neighb_local,*/ *h_neighb, *d_sizeof_neighbours;
-	double /**d_x, *d_y,*/ *d_Xmax, *d_Xmin, *d_Ymax, *d_Ymin, *d_re, *d_DELTA;
+	int *d_particleHash, *d_particleid, *h_neighb, *d_sizeof_neighbours;
+	double *d_Xmax, *d_Xmin, *d_Ymax, *d_Ymin, *d_re, *d_DELTA;
 
 	int arrsizeint = TP * sizeof(int);
 	int sizeint = sizeof(int);
-	int arrsizedouble = (TP + 1) * sizeof(double);
 	int sizedouble = sizeof(double);
 	int sizeneighb = (TP+1) * (MAX_NEIGHB + 1) * sizeof(int);
 	int sizeof_neighbours = (MAX_NEIGHB + 1) * sizeof(int);
@@ -374,14 +343,8 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 	h_neighb = (int *)malloc(sizeneighb);
 
 
-	//neighb_local = new int*[TP + 1]();
-	//for (int m = 0; m <= TP; m++)
-	//	neighb_local[m] = new int[MAX_NEIGHB + 1]();
-
 	cudaMalloc((void **)&d_particleHash, arrsizeint);
 	cudaMalloc((void **)&d_particleid, arrsizeint);
-	//cudaMalloc((void **)&d_x, arrsizedouble);
-	//cudaMalloc((void **)&d_y, arrsizedouble);
 	cudaMalloc((void **)&d_Xmin, sizedouble);
 	cudaMalloc((void **)&d_Xmax, sizedouble);
 	cudaMalloc((void **)&d_Ymin, sizedouble);
@@ -392,12 +355,9 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 	cudaMalloc((void **)&d_tnc, sizeint);
 	cudaMalloc((void **)&d_ncx, sizeint);
 	cudaMalloc((void **)&d_ncy, sizeint);
-	//cudaMalloc((void **)&d_neighb, sizeneighb);
 	cudaMalloc((void **)&d_max_neighb, sizeint);
 	cudaMalloc((void **)&d_sizeof_neighbours, sizeof_neighbours);
 
-	//cudaMemcpy(d_x, x, arrsizedouble, cudaMemcpyHostToDevice);
-	//cudaMemcpy(d_y, y, arrsizedouble, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_Xmin, &Xmin, sizedouble, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_Xmax, &Xmax, sizedouble, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_Ymin, &Ymin, sizedouble, cudaMemcpyHostToDevice);
@@ -442,52 +402,12 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 
 	createNeighbourArraysCUDAgpu << <TP / THREADS_PER_BLOCK + 1, THREADS_PER_BLOCK >> > (0, d_neighb, d_cellStart, d_cellEnd, d_particleHash, d_particleid, d_ncx, d_ncy, d_max_neighb, d_TP, d_re, d_DELTA, d_x, d_y);
 
-	//createNeighbourArraysCUDAgpu << <TP / THREADS_PER_BLOCK, THREADS_PER_BLOCK >> > (1, d_neighb, d_cellStart, d_cellEnd, d_particleHash, d_particleid, d_ncx, d_ncy, d_max_neighb, d_TP, d_re, d_DELTA, d_x, d_y);
-	//createNeighbourArraysCUDAgpu << <1, (TP % THREADS_PER_BLOCK) >> > (((TP / THREADS_PER_BLOCK) * THREADS_PER_BLOCK) + 1, d_neighb, d_cellStart, d_cellEnd, d_particleHash, d_particleid, d_ncx, d_ncy, d_max_neighb, d_TP, d_re, d_DELTA, d_x, d_y);
-
-
-	//cudaMemcpy(h_neighb, d_neighb, sizeneighb, cudaMemcpyDeviceToHost);
-
-
-
-	// ---------------------------- Populating neighb array ----------------------
-
-
-	//for (int j = 0; j < TP; j++) {
-	//	for (int i = 0; i < h_neighb[j*(MAX_NEIGHB + 1)]; i++) {
-	//		neighb_local[j + 1][i + 2] = h_neighb[j*(MAX_NEIGHB + 1) + i + 1];
-	//	}
-	//	neighb_local[j + 1][1] = h_neighb[j*(MAX_NEIGHB + 1)] + 1;
-	//}
-
-	//for (int j = 0; j < TP; j++) {
-	//	for (int i = 0; i < neighb_local[j + 1][1]; i++) {
-	//		h_neighb[j*(MAX_NEIGHB)+1 + i + 1] = neighb_local[j + 1][i + 2];
-	//	}
-	//	h_neighb[j*(MAX_NEIGHB)+1] = neighb_local[j + 1][1];
-	//}
-	//cudaMemcpy(d_neighb, h_neighb, sizeneighb, cudaMemcpyHostToDevice);
-
-	//std::ofstream outneigh;
-	//std::string filename = "outneigh_gpu" + std::to_string(glob) + ".txt";
-	//glob++;
-	//outneigh.open(filename, 'w');
-	//
-	//for (int j = 1; j <= TP + 1; j++) {
-	//	for (int i = 1; i <= h_neighb[j * (MAX_NEIGHB) + 1]; i++) {
-	//		outneigh << h_neighb[j * (MAX_NEIGHB)+i] << " ";
-	//	}
-	//	outneigh << std::endl;
-	//}
-	//outneigh.close();
 	// -------------------------- Deallocating memory ---------------------------
 
 	cudaFree(d_particleHash);
 	cudaFree(d_particleid);
 	cudaFree(d_cellStart);
 	cudaFree(d_cellEnd);
-	//cudaFree(d_x);
-	//cudaFree(d_y);
 	cudaFree(d_Xmin);
 	cudaFree(d_Xmax);
 	cudaFree(d_Ymin);
@@ -497,17 +417,9 @@ void neighbour_cuda_2d_gpu(int TP, double *d_x, double *d_y, double DELTA, doubl
 	cudaFree(d_tnc);
 	cudaFree(d_ncx);
 	cudaFree(d_ncy);
-	//cudaFree(d_neighb);
 	cudaFree(d_max_neighb);
 	cudaFree(d_sizeof_neighbours);
 
 	free(h_neighb);
 	free(tnc);
-
-	//for (int i = 0; i < TP; i++)
-	//{
-	//	delete[] neighb_local[i]; // delete array within matrix
-	//}
-	//// delete actual matrix
-	//delete[] neighb_local;
 }

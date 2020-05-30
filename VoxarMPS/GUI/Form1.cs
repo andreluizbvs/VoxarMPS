@@ -19,7 +19,7 @@ namespace GUI
             InitializeComponent();
             comboBox1.Items.Add("Português-BR");
             comboBox1.Items.Add("English-US");
-            comboBox1.Text = comboBox1.Items[0].ToString();
+            comboBox1.Text = comboBox1.Items[1].ToString();
 
             voxarMpsGui = "";
             this.FormClosed += new FormClosedEventHandler(Form1_FormClosed);
@@ -66,7 +66,7 @@ namespace GUI
                 }
                 else if (comboBox1.SelectedItem.ToString() == "English-US")
                 {
-                    MessageBox.Show(this, "The largest time-step duration value allowed is 0.005 seconds, ", "Error");
+                    MessageBox.Show(this, "The largest time-step duration value allowed is 0.005 seconds", "Error");
                 }
                 return;
             }
@@ -157,6 +157,21 @@ namespace GUI
                     MessageBox.Show(this, "If no output option is selected, the simulation will not be able to be visualized", "Warning");
                 }
             }
+            
+            if ((comboBox3.SelectedItem.ToString() == "GPU-CUDA (faster)" || comboBox3.SelectedItem.ToString() == "GPU-CUDA (mais rápido)") 
+                && (comboBox4.SelectedItem.ToString() == "Dam Break" || comboBox4.SelectedItem.ToString() == "Quebra de Barragem")
+                && comboBox2.SelectedItem.ToString() == "3D")
+            {
+                if (comboBox1.SelectedItem.ToString() == "Português-BR")
+                {
+                    MessageBox.Show(this, "A quebra de barragem em 3D acelerada por GPU não pode ser executada pois a busca de vizinhos na GPU é feita apenas para 2D", "Erro");
+                }
+                else if (comboBox1.SelectedItem.ToString() == "English-US")
+                {
+                    MessageBox.Show(this, "3D Dam Break in GPU cannot be run since the CUDA neighbourhood search is only implemented for 2D cases", "Error");
+                }
+                return;
+            }
 
             var proc = new Process
             {
@@ -194,7 +209,7 @@ namespace GUI
         public void putInEnglish()
         {
             this.button3.Text = "Start";
-            this.label13.Text = "Idioma:";
+            this.label13.Text = "Language:";
             this.label14.Text = "Performance optimization:";
             this.label15.Text = "Dimensions:";
             this.label1.Text = "Test:";
@@ -229,7 +244,7 @@ namespace GUI
         public void putInPortuguese()
         {
             this.button3.Text = "Iniciar";
-            this.label13.Text = "Language:";
+            this.label13.Text = "Idioma:";
             this.label14.Text = "Otimização de performance:";
             this.label15.Text = "Dimensões:";
             this.label1.Text = "Teste:";
@@ -314,5 +329,14 @@ namespace GUI
             }
         }
 
+        private void label13_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+        }
     }
 }

@@ -1,9 +1,6 @@
 #ifndef NEIGHBOUR_PARALLEL_H    
 #define NEIGHBOUR_PARALLEL_H
 
-//#include "stdafx.h"
-//#include <SFML/Graphics.hpp>
-//VS Headers
 
 
 void neighbour_cuda_2d(int TP, double *x, double *y, double DELTA, double re, int ** neighb, double Xmin, double Xmax, double Ymin, double Ymax);
