@@ -201,7 +201,7 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 
 If you use VoxarMPS in your work, please cite it
 
-'''
+```
 @article{vieira-e-silva2020fluid,
   title={A fluid simulation system based on the MPS method},
   author={Vieira-e-Silva, Andr\'e-Luiz and Brito, Caio and Sim\~oes, Francisco and Teichrieb, Veronica},
@@ -209,7 +209,7 @@ If you use VoxarMPS in your work, please cite it
   year={2020},
   publisher={Elsevier}
 }
-'''
+```
 
 
 ## References
