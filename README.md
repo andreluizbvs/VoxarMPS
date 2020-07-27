@@ -183,14 +183,6 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
   
 
-## Releases
-
-  
-
-- Version 1.0 released - 2019-XX-XX
-
-  
-
 ## License
 
   
@@ -204,7 +196,21 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 - André Luiz Buarque Vieira-e-Silva (albvs@cin.ufpe.br)
 - Voxar Labs (voxarlabs@cin.ufpe.br) - https://www.cin.ufpe.br/~voxarlabs/
 
-  
+
+## Citing
+
+If you use VoxarMPS in your work, please cite it
+
+'''
+@article{vieira-e-silva2020fluid,
+  title={A fluid simulation system based on the MPS method},
+  author={Vieira-e-Silva, Andr\'e-Luiz and Brito, Caio and Sim\~oes, Francisco and Teichrieb, Veronica},
+  journal={Computer Physics Communications},
+  year={2020},
+  publisher={Elsevier}
+}
+'''
+
 
 ## References
 
