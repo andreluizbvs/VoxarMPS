@@ -10,7 +10,7 @@
 
 ![GUI and simulation output](https://i.imgur.com/huKddLr.png)
 
-![Oil spilling](https://i.imgur.com/TV6RzS4.mp4)
+![Oil spilling](https://i.imgur.com/TvTrYQG.gif)
 
   
 
