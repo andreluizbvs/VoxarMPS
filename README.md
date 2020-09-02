@@ -92,7 +92,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
   
 
-[Graphical User interface details](https://i.imgur.com/YH4GcPd.png)
+![Graphical User interface details](https://i.imgur.com/YH4GcPd.png)
 
   
 
