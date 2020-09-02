@@ -8,9 +8,9 @@
   
   
 
-![GUI & simulation output](https://lh3.googleusercontent.com/ZE8kEKhkJEvU-egRPZKXBxoNHCx9CC4ieHEqydhvALc8kjIEf6BgpgK-fmH6dwEn4a306E42hw4Rtg)
+![GUI & simulation output](https://imgur.com/huKddLr)
 
-![Oil spilling](https://lh3.googleusercontent.com/0nM5gYtc49N9YH5Pv8XmEJt5doqyNWaqPsv3EDxKaIYaMLQ4aKadmHXI3tNCPGOZAisUT_2Tw0vv8Q "Oil spilling")
+![Oil spilling](https://imgur.com/1zFkjHf "Oil spilling")
 
   
 
@@ -92,7 +92,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
   
 
-![Graphical User interface](https://lh3.googleusercontent.com/k0kqTduLYezFVEYyErF-Y8sfkwEaz8n8bqSgs7SsN9wZSOKwHJnFZkd2ETjV6e8c1L2f-_5Wqo5uXw "Graphical User Interface")
+![Graphical User interface](https://imgur.com/YH4GcPd "Graphical User Interface")
 
   
 
@@ -199,15 +199,19 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 
 ## Citing
 
-If you use VoxarMPS in your work, please cite it
+If you use Voxar MPS in your work, please cite it:
 
 ```
-@article{vieira-e-silva2020fluid,
-  title={A fluid simulation system based on the MPS method},
-  author={Vieira-e-Silva, Andr\'e-Luiz and Brito, Caio and Sim\~oes, Francisco and Teichrieb, Veronica},
-  journal={Computer Physics Communications},
-  year={2020},
-  publisher={Elsevier}
+@article{VIEIRAESILVA2020107572,
+title = "A fluid simulation system based on the MPS method",
+journal = "Computer Physics Communications",
+pages = "107572",
+year = "2020",
+issn = "0010-4655",
+doi = "https://doi.org/10.1016/j.cpc.2020.107572",
+url = "http://www.sciencedirect.com/science/article/pii/S0010465520302745",
+author = "André Luiz Buarque Vieira-e-Silva and Caio José {dos Santos Brito} and Francisco Paulo Magalhães Simões and Veronica Teichrieb",
+keywords = "MPS, Framework, Numerical improvements, Fluid models, Parallelization"
 }
 ```
 
@@ -216,7 +220,7 @@ If you use VoxarMPS in your work, please cite it
 
 Main references
 
-- Vieira-e-Silva, André-Luiz et al. "A fluid simulation system based on the MPS method." _Computer Physics Communications_ (2019), Submitted.
+- Vieira-e-Silva, André Luiz Buarque, et al. "A fluid simulation system based on the MPS method." _Computer Physics Communications_ (2020): 107572.
 
 - Shakibaeinia, Ahmad, and Yee-Chung Jin. "MPS mesh-free particle method for multiphase flows." _Computer Methods in Applied Mechanics and Engineering_ 229 (2012): 13-26.
 
