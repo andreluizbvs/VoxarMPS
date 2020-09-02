@@ -8,9 +8,9 @@
   
   
 
-![GUI and simulation output](https://imgur.com/huKddLr)
+![GUI and simulation output](https://i.imgur.com/huKddLr.png)
 
-![Oil spilling](https://imgur.com/1zFkjHf)
+![Oil spilling](https://i.imgur.com/1zFkjHf.png)
 
   
 
@@ -92,7 +92,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
   
 
-[Graphical User interface detailed](https://imgur.com/YH4GcPd)
+[Graphical User interface details](https://i.imgur.com/YH4GcPd.png)
 
   
 
@@ -137,7 +137,7 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
 2. Only tested on Windows 10 using Visual Studio 2019 Enterprise and Community editions.
 
-3. Only the following NVIDIA GPUs were tested with: GTX 1080 (Mobile) and GTX 1080 Ti
+3. Only tested on the following NVIDIA GPUs: GTX 1080 (Mobile) and GTX 1080 Ti
 
   
 
