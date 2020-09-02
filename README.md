@@ -8,9 +8,9 @@
   
   
 
-![GUI & simulation output](https://imgur.com/huKddLr)
+![GUI and simulation output](https://imgur.com/huKddLr)
 
-![Oil spilling](https://imgur.com/1zFkjHf "Oil spilling")
+![Oil spilling](https://imgur.com/1zFkjHf)
 
   
 
@@ -92,7 +92,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
   
 
-![Graphical User interface](https://imgur.com/YH4GcPd "Graphical User Interface")
+[Graphical User interface detailed](https://imgur.com/YH4GcPd)
 
   
 
