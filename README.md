@@ -202,15 +202,16 @@ This program is distributed under GNU General Public License version 3 (GPLv3) l
 If you use Voxar MPS in your work, please cite it:
 
 ```
-@article{VIEIRAESILVA2020107572,
+@article{vieira-e-silva2021fluid,
 title = "A fluid simulation system based on the MPS method",
 journal = "Computer Physics Communications",
+volume = "258",
 pages = "107572",
-year = "2020",
+year = "2021",
 issn = "0010-4655",
 doi = "https://doi.org/10.1016/j.cpc.2020.107572",
 url = "http://www.sciencedirect.com/science/article/pii/S0010465520302745",
-author = "André Luiz Buarque Vieira-e-Silva and Caio José {dos Santos Brito} and Francisco Paulo Magalhães Simões and Veronica Teichrieb",
+author = "André Luiz Buarque {Vieira-e-Silva} and Caio José {dos Santos Brito} and Francisco Paulo {Magalhães Simões} and Veronica Teichrieb",
 keywords = "MPS, Framework, Numerical improvements, Fluid models, Parallelization"
 }
 ```
