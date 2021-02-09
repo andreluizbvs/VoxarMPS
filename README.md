@@ -84,6 +84,14 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 5. Build from source both Visual Studio projects, first the the VoxarMPS solution and then the GUI solution
 
+	- To solve a common problem during build: Copy all files from this path (depends on the path you installed CUDA in)
+
+		C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1\extras\visual_studio_integration\MSBuildExtensions
+
+		to this path:
+
+		C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\BuildCustomizations
+
 6. Run GUI.exe to set the simulation parameters and start it
 
   
