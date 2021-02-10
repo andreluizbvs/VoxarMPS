@@ -68,7 +68,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 - CUDA 10.1 
 
-- Visual Studio 2019 
+- Visual Studio 2017 
 
 ## Installation
 
@@ -78,7 +78,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 2. Install CUDA 10.1 (https://developer.nvidia.com/cuda-10.1-download-archive-base)
 
-3. Install Visual Studio 2019 (Community, Professional or Enterprise) (https://visualstudio.microsoft.com/vs/)
+3. Install Visual Studio 2017 (Community, Professional or Enterprise) (https://visualstudio.microsoft.com/vs/)
 
 4. Install Git and clone this repository
 
@@ -90,7 +90,7 @@ The system makes possible to simulate fluids in different ways and approaches. A
 
 		to this path:
 
-		C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\BuildCustomizations
+		C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\VC\VCTargets\BuildCustomizations
 
 6. Run GUI.exe to set the simulation parameters and start it
 
@@ -143,7 +143,7 @@ To watch the simulation outcome any visualization software that reads VTU files 
 
 1. Number of particles in the simulation is limited by the size of available RAM
 
-2. Only tested on Windows 10 using Visual Studio 2019 Enterprise and Community editions.
+2. Only tested on Windows 10 using Visual Studio 2017 Enterprise and Community editions.
 
 3. Only tested on the following NVIDIA GPUs: GTX 1080 (Mobile) and GTX 1080 Ti
 
